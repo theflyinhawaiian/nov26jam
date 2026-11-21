@@ -52,6 +52,23 @@ namespace Jam.EditorTools
             });
         }
 
+        /// <summary>
+        /// Headless bot client for production smoke tests from WSL, avoiding Windows-side TLS
+        /// interception (Avast): ./Game.x86_64 -batchmode -nographics -client -connect host -smoketest
+        /// </summary>
+        [MenuItem("nov26jam/Build/Linux client (dev, smoke tests)")]
+        public static void BuildLinuxClientDev()
+        {
+            Build(new BuildPlayerOptions
+            {
+                scenes = Scenes,
+                target = BuildTarget.StandaloneLinux64,
+                subtarget = (int)StandaloneBuildSubtarget.Player,
+                locationPathName = Path.Combine(BuildsRoot, "LinuxClient", "Game.x86_64"),
+                options = BuildOptions.Development,
+            });
+        }
+
         private static void Build(BuildPlayerOptions options)
         {
             string outDir = options.target == BuildTarget.WebGL ? options.locationPathName : Path.GetDirectoryName(options.locationPathName);
