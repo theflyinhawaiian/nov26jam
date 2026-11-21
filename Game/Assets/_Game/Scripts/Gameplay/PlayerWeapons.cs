@@ -22,9 +22,13 @@ namespace Jam.Gameplay
 
         /// <summary>Cap on how far the server fast-forwards a projectile to cover latency.</summary>
         private const float MaxCatchUpSeconds = 0.25f;
-        /// <summary>Range of the observer-side blend from the thrower onto the true grenade arc.</summary>
-        private const float MinVisualBlend = 0.15f;
-        private const float MaxVisualBlend = 0.4f;
+        /// <summary>
+        /// Observers play a late grenade's arc from the start on a fast clock: catch-up time is
+        /// lateness × factor, clamped. Factor 3 means 1.33x speed; the clamp caps it near 1.5x.
+        /// </summary>
+        private const float VisualCatchUpFactor = 3f;
+        private const float MinVisualCatchUp = 0.3f;
+        private const float MaxVisualCatchUp = 1f;
 
         private PlayerAvatar _avatar;
         private float[] _nextFireLocal;
@@ -231,7 +235,7 @@ namespace Jam.Gameplay
         private void FireProjectileLocal(byte index, WeaponDefinition w, Vector2 origin, Vector2 aim, PreciseTick pt)
         {
             ushort id = _nextProjectileId++;
-            _visuals[id] = GrenadeVisual.Spawn(origin, aim * w.LaunchSpeed, w, 0f, _avatar.ArenaPhysics);
+            _visuals[id] = GrenadeVisual.Spawn(origin, aim * w.LaunchSpeed, w, _avatar.ArenaPhysics);
             ServerFireProjectile(index, id, origin, aim, pt);
         }
 
@@ -260,17 +264,14 @@ namespace Jam.Gameplay
         private void ObserversSpawnProjectile(byte index, ushort id, Vector2 origin, Vector2 velocity, uint serverTick, float serverAge)
         {
             float age = Mathf.Clamp(serverAge + (float)TimeManager.TimePassed(serverTick), 0f, MaxCatchUpSeconds * 2f);
-            // We see the thrower late (interpolation) and the grenade early (fast-forward), so start it
-            // at the thrower as drawn here and blend onto the true arc. Purely visual: the server decides hits.
+            // The real grenade is already `age` seconds along its arc. Play it from the start (at the
+            // thrower as drawn here) on a slightly fast clock until it catches up. Visual only.
             Vector2 shown = transform.position;
-            float blend = Mathf.Clamp(age * 2f, MinVisualBlend, MaxVisualBlend);
+            float catchUp = Mathf.Clamp(age * VisualCatchUpFactor, MinVisualCatchUp, MaxVisualCatchUp);
             if (FireDiagnostics.Enabled || SmokeTestDriver.Requested)
-            {
-                Vector2 arc = Grenade.PositionAt(origin, velocity, _weapons[index].ProjectileGravity, age);
-                Debug.Log($"[Grenade] observer spawn: age {age:0.000}s, thrower shown {Vector2.Distance(shown, origin):0.00}u from true origin, " +
-                          $"true arc {Vector2.Distance(shown, arc):0.00}u from shown thrower; blending over {blend:0.00}s");
-            }
-            _visuals[id] = GrenadeVisual.Spawn(origin, velocity, _weapons[index], age, _avatar.ArenaPhysics, shown, blend);
+                Debug.Log($"[Grenade] observer spawn: {age:0.000}s behind, thrower shown {Vector2.Distance(shown, origin):0.00}u from true origin; " +
+                          $"catching up over {catchUp:0.00}s at {1f + age / catchUp:0.00}x");
+            _visuals[id] = GrenadeVisual.Spawn(origin, velocity, _weapons[index], _avatar.ArenaPhysics, age, catchUp, shown);
         }
 
         private void SimulateProjectiles()
