@@ -44,6 +44,7 @@ namespace Jam.Net
         {
             _nm.ServerManager.RegisterBroadcast<FindMatchBroadcast>(OnFindMatch);
             _nm.ServerManager.RegisterBroadcast<LeaveMatchBroadcast>(OnLeaveMatch);
+            _nm.ServerManager.RegisterBroadcast<HelloBroadcast>(OnHello, requireAuthentication: false);
             _nm.ServerManager.OnRemoteConnectionState += OnRemoteConnectionState;
             _nm.SceneManager.OnLoadEnd += OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd += OnClientPresenceChangeEnd;
@@ -55,6 +56,7 @@ namespace Jam.Net
                 return;
             _nm.ServerManager.UnregisterBroadcast<FindMatchBroadcast>(OnFindMatch);
             _nm.ServerManager.UnregisterBroadcast<LeaveMatchBroadcast>(OnLeaveMatch);
+            _nm.ServerManager.UnregisterBroadcast<HelloBroadcast>(OnHello);
             _nm.ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             _nm.SceneManager.OnLoadEnd -= OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd -= OnClientPresenceChangeEnd;
@@ -85,6 +87,11 @@ namespace Jam.Net
 
         public string GetNickname(NetworkConnection conn) =>
             _nicknames.TryGetValue(conn, out string n) ? n : $"Player{conn.ClientId}";
+
+        private void OnHello(NetworkConnection conn, HelloBroadcast msg, Channel channel)
+        {
+            _nm.ServerManager.Broadcast(conn, new ServerInfoBroadcast { Version = BuildInfo.Version }, requireAuthenticated: false);
+        }
 
         #region Queue
         private void OnFindMatch(NetworkConnection conn, FindMatchBroadcast msg, Channel channel)

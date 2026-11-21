@@ -22,8 +22,6 @@ namespace Jam.Gameplay
 
         /// <summary>Cap on how far the server fast-forwards a projectile to cover latency.</summary>
         private const float MaxCatchUpSeconds = 0.25f;
-        /// <summary>A fresh grenade can't hit its thrower (it spawns inside their hitbox).</summary>
-        private const float SelfHitGraceSeconds = 0.15f;
 
         private PlayerAvatar _avatar;
         private float[] _nextFireLocal;
@@ -275,13 +273,19 @@ namespace Jam.Gameplay
                 p.Age += dt;
                 WeaponDefinition w = p.Weapon;
                 Vector2 next = Grenade.PositionAt(p.Origin, p.Velocity, w.ProjectileGravity, p.Age);
-                PlayerAvatar ignore = p.Age < SelfHitGraceSeconds ? _avatar : null;
+                // Arming is by distance rather than time: the server fast-forwards fresh grenades by
+                // the shooter's latency, and our (client-authoritative) position on the server lags
+                // behind where we really are, so a time-based grace can expire while the grenade is
+                // still inside our stale hitbox.
+                bool armed = Vector2.Distance(p.Origin, p.LastPosition) >= w.ArmDistance;
+                PlayerAvatar ignore = armed ? null : _avatar;
 
                 bool expired = p.Age >= w.MaxLifetime;
                 if (LagCompensation.Sweep(match, p.LastPosition, next, w.ProjectileRadius, ignore, out Vector2 impact) || expired)
                 {
-                    ObserversExplode(p.Id, impact, w.ExplosionRadius);
-                    if (!match.Ended)
+                    bool dud = !armed && !expired;
+                    ObserversExplode(p.Id, impact, dud ? 0f : w.ExplosionRadius);
+                    if (!dud && !match.Ended)
                         Combat.Explode(match, impact, w);
                     _serverProjectiles.RemoveAt(i);
                     continue;
@@ -301,7 +305,8 @@ namespace Jam.Gameplay
                     Destroy(v.gameObject);
                 _visuals.Remove(id);
             }
-            Fx.Explosion(point, radius);
+            // Radius 0 = an unarmed dud: just a puff.
+            Fx.Explosion(point, radius > 0f ? radius : 0.3f);
         }
         #endregion
     }

@@ -47,3 +47,7 @@ Game/Assets/**/obj/
 Game/Assets/**/obj.meta
 Game/Assets/**/bin/
 Game/Assets/**/bin.meta
+
+# Generated per build by BuildScripts.WriteBuildInfo
+Game/Assets/_Game/Resources/BuildInfo.txt
+Game/Assets/_Game/Resources/BuildInfo.txt.meta

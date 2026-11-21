@@ -24,6 +24,7 @@ namespace Jam.UI
         private string _nickname = "";
         private MatchStatus _status = MatchStatus.Idle;
         private string _statusMessage = "";
+        private string _serverVersion = "?";
 
         private void Awake()
         {
@@ -35,6 +36,7 @@ namespace Jam.UI
         private void Start()
         {
             _nm.ClientManager.RegisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
+            _nm.ClientManager.RegisterBroadcast<ServerInfoBroadcast>(OnServerInfo);
             _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
         }
 
@@ -43,6 +45,7 @@ namespace Jam.UI
             if (_nm == null)
                 return;
             _nm.ClientManager.UnregisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
+            _nm.ClientManager.UnregisterBroadcast<ServerInfoBroadcast>(OnServerInfo);
             _nm.ClientManager.OnClientConnectionState -= OnClientConnectionState;
         }
 
@@ -54,8 +57,16 @@ namespace Jam.UI
                 FireDiagnostics.Reset();
         }
 
+        private void OnServerInfo(ServerInfoBroadcast msg, Channel channel)
+        {
+            _serverVersion = msg.Version;
+            Debug.Log($"[DebugHud] Client build {BuildInfo.Version}, server build {msg.Version}");
+        }
+
         private void OnClientConnectionState(ClientConnectionStateArgs args)
         {
+            if (args.ConnectionState == LocalConnectionState.Started)
+                _nm.ClientManager.Broadcast(new HelloBroadcast());
             if (args.ConnectionState == LocalConnectionState.Stopped)
             {
                 _status = MatchStatus.Idle;
@@ -67,6 +78,8 @@ namespace Jam.UI
         {
             if (UnityEngine.InputSystem.Keyboard.current?.f3Key.wasPressedThisFrame == true)
                 FireDiagnostics.Enabled = !FireDiagnostics.Enabled;
+            if (FireDiagnostics.Enabled && UnityEngine.InputSystem.Keyboard.current?.f4Key.wasPressedThisFrame == true)
+                TeleportToEnemySpawn();
 
             float scale = Screen.height / ReferenceHeight;
             Vector2 mouse = UnityEngine.InputSystem.Mouse.current?.position.ReadValue() ?? Vector2.negativeInfinity;
@@ -89,6 +102,7 @@ namespace Jam.UI
             bool server = _nm.IsServerStarted;
             bool client = _nm.IsClientStarted;
             GUILayout.Label($"Server: {(server ? "running" : "off")}   Client: {(client ? "connected" : "off")}");
+            GUILayout.Label($"Build {BuildInfo.Version}  |  server {(client ? _serverVersion : "-")}");
 
 #if !UNITY_WEBGL || UNITY_EDITOR
             if (!server && !client)
@@ -141,6 +155,29 @@ namespace Jam.UI
                 GUILayout.Label(_statusMessage);
         }
 
+        /// <summary>
+        /// Debug: put the local player just in front of the opponent's spawn (6 units toward the
+        /// centre). Movement is client-authoritative, so this is a local teleport; NetworkTransform
+        /// snaps it on the other screens. Needs to be whitelisted once the server validates movement (M5).
+        /// </summary>
+        private void TeleportToEnemySpawn()
+        {
+            PlayerAvatar me = null;
+            foreach (PlayerAvatar a in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+                if (a.IsOwner)
+                    me = a;
+            if (me == null || me.IsDead.Value)
+                return;
+            foreach (SpawnPoint sp in FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None))
+            {
+                if (sp.Team == me.Team.Value)
+                    continue;
+                Vector2 p = sp.transform.position;
+                me.Motor.Teleport(new Vector2(p.x - Mathf.Sign(p.x) * 6f, p.y));
+                return;
+            }
+        }
+
         private void DrawMatch()
         {
             PlayerAvatar me = null, opp = null;
@@ -177,7 +214,7 @@ namespace Jam.UI
             if (opp != null)
                 GUILayout.Label(opp.IsDead.Value ? $"{opp.Nickname.Value}: DEAD" : $"{opp.Nickname.Value}: {opp.Health.Value}/{PlayerAvatar.MaxHealth} HP");
 
-            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, F3 debug");
+            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, F3 debug" + (FireDiagnostics.Enabled ? ", F4 TP to enemy spawn" : ""));
 
             if (FireDiagnostics.Enabled)
             {

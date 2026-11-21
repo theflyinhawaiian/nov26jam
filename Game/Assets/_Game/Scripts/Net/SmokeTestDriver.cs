@@ -12,6 +12,8 @@ namespace Jam.Net
     /// - duel: walk the mid lane to within rifle range, hop, shoot the opponent; a grenade every 3s.
     /// - attack: walk to the enemy nexus (hopping over jump pads) and shoot it.
     /// - passive: stand at spawn.
+    /// - selfnade: run back and forth near spawn throwing grenades forward, at the floor ahead,
+    ///   and straight down (regression check for self-damage while moving).
     /// Logs progress, then quits with "SMOKE RESULT" in the log.
     /// </summary>
     public class SmokeTestDriver : MonoBehaviour
@@ -34,6 +36,8 @@ namespace Jam.Net
         private int _deaths;
         private int _respawns;
         private bool _wasDead;
+        private int _minHealth = int.MaxValue;
+        private int _grenadesThrown;
 
         public static bool Requested => Array.IndexOf(Environment.GetCommandLineArgs(), "-smoketest") >= 0;
 
@@ -91,7 +95,7 @@ namespace Jam.Net
             {
                 Debug.Log($"SMOKE RESULT mode={_mode} matched={_matched} maxAvatarsSeen={_maxAvatarsSeen} minOwnY={_minOwnY:0.00} maxOwnY={_maxOwnY:0.00} " +
                           $"deaths={_deaths} respawns={_respawns} rifleShots={FireDiagnostics.Shots} rifleHits={FireDiagnostics.Hits} " +
-                          $"medianErr={FireDiagnostics.MedianError:0.000} end=\"{_endMessage}\"");
+                          $"medianErr={FireDiagnostics.MedianError:0.000} minHealth={_minHealth} grenades={_grenadesThrown} end=\"{_endMessage}\"");
                 Application.Quit(_matched ? 0 : 1);
                 enabled = false;
             }
@@ -108,6 +112,8 @@ namespace Jam.Net
             if (a.IsDead.Value)
                 return;
 
+            if (a.IsSpawned)
+                _minHealth = Mathf.Min(_minHealth, a.Health.Value);
             Vector2 pos = a.transform.position;
             _minOwnY = Mathf.Min(_minOwnY, pos.y);
             _maxOwnY = Mathf.Max(_maxOwnY, pos.y);
@@ -120,6 +126,32 @@ namespace Jam.Net
                 case "passive":
                     a.ScriptedInput = default(MotorInput);
                     break;
+
+                case "selfnade":
+                {
+                    // Sprint between x = ±(44..56) on our own side, flipping direction every 1.2s.
+                    float side = a.Team.Value == 0 ? -1f : 1f;
+                    float runDir = Mathf.Repeat(t, 2.4f) < 1.2f ? 1f : -1f;
+                    if (Mathf.Abs(pos.x) < 44f) runDir = -side;      // stay clear of the mid pads
+                    if (Mathf.Abs(pos.x) > 56f) runDir = side;
+                    bool hop = Mathf.Repeat(t, 2f) < Time.deltaTime * 1.5f;
+                    a.ScriptedInput = new MotorInput { X = runDir, JumpPressed = hop, JumpHeld = hop };
+
+                    a.Weapons.Select(1);
+                    if (a.Weapons.CooldownRemaining(1) <= 0f)
+                    {
+                        // Cycle: forward-up, at the floor 2 units ahead, straight down at our feet.
+                        Vector2 target = (_grenadesThrown % 3) switch
+                        {
+                            0 => pos + new Vector2(runDir * 6f, 3f),
+                            1 => pos + new Vector2(runDir * 2f, -1.5f),
+                            _ => pos + Vector2.down * 2f,
+                        };
+                        a.Weapons.FireAt(target);
+                        _grenadesThrown++;
+                    }
+                    break;
+                }
 
                 case "attack":
                 {

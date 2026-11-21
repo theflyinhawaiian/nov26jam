@@ -69,8 +69,12 @@ namespace Jam.EditorTools
             });
         }
 
+        private const string BuildInfoPath = "Assets/_Game/Resources/" + BuildInfo.ResourceName + ".txt";
+
         private static void Build(BuildPlayerOptions options)
         {
+            WriteBuildInfo();
+
             string outDir = options.target == BuildTarget.WebGL ? options.locationPathName : Path.GetDirectoryName(options.locationPathName);
             if (Directory.Exists(outDir))
                 Directory.Delete(outDir, true);
@@ -80,6 +84,39 @@ namespace Jam.EditorTools
             Debug.Log($"[BuildScripts] {options.target}: {s.result} in {s.totalTime}, {s.totalSize / (1024 * 1024)} MB → {options.locationPathName}");
             if (s.result != BuildResult.Succeeded && Application.isBatchMode)
                 EditorApplication.Exit(1);
+        }
+
+        /// <summary>Stamps "&lt;git hash&gt;[-dirty] &lt;UTC time&gt;" into Resources so builds can show it at runtime.</summary>
+        private static void WriteBuildInfo()
+        {
+            string hash = Git("rev-parse --short HEAD") ?? "nogit";
+            string dirty = string.IsNullOrEmpty(Git("status --porcelain -- .")) ? "" : "-dirty";
+            string stamp = $"{hash}{dirty} {System.DateTime.UtcNow:yyyy-MM-dd HH:mm}Z";
+
+            Directory.CreateDirectory(Path.GetDirectoryName(BuildInfoPath));
+            File.WriteAllText(BuildInfoPath, stamp);
+            AssetDatabase.ImportAsset(BuildInfoPath, ImportAssetOptions.ForceUpdate);
+            Debug.Log($"[BuildScripts] Build stamp: {stamp}");
+        }
+
+        private static string Git(string args)
+        {
+            try
+            {
+                using System.Diagnostics.Process p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("git", args)
+                {
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+                string output = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit();
+                return p.ExitCode == 0 ? output : null;
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
         }
     }
 }

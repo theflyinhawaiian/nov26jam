@@ -29,5 +29,7 @@ namespace Jam.Gameplay
         public float MaxLifetime = 5f;
         [Tooltip("Collision radius of the projectile itself against players.")]
         public float ProjectileRadius = 0.2f;
+        [Tooltip("Distance from the muzzle before the projectile arms. Unarmed projectiles pass through the thrower and fizzle (no damage) if they hit anything else.")]
+        public float ArmDistance = 3f;
     }
 }

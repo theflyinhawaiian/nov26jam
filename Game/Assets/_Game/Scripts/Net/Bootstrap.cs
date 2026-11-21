@@ -40,6 +40,12 @@ namespace Jam.Net
                 ConfigureClient("localhost", NetConfig.ServerPort, useWss: false);
             if (SmokeTestDriver.Requested)
                 gameObject.AddComponent<SmokeTestDriver>();
+            // -latency ms: FishNet's latency simulator (applied to this process's outgoing traffic).
+            if (long.TryParse(GetArg("-latency"), out long latency))
+            {
+                _nm.TransportManager.LatencySimulator.SetEnabled(true);
+                _nm.TransportManager.LatencySimulator.SetLatency(latency);
+            }
             if (HasArg("-server"))
                 StartServer();
             else if (HasArg("-client"))
