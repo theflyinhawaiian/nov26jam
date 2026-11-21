@@ -101,7 +101,11 @@ namespace Jam.UI
 
             bool server = _nm.IsServerStarted;
             bool client = _nm.IsClientStarted;
-            GUILayout.Label($"Server: {(server ? "running" : "off")}   Client: {(client ? "connected" : "off")}");
+            string status = server && client ? "Hosting (server + client)"
+                : server ? "Server only"
+                : client ? $"Connected to {_nm.TransportManager.Transport.GetClientAddress()}"
+                : "Not connected";
+            GUILayout.Label(status);
             GUILayout.Label($"Build {BuildInfo.Version}  |  server {(client ? _serverVersion : "-")}");
 
 #if !UNITY_WEBGL || UNITY_EDITOR
