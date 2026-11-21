@@ -32,7 +32,12 @@ namespace Jam.Net
             ConfigureClientFromPageUrl();
             _nm.ClientManager.StartConnection();
 #else
-            ConfigureClient("localhost", NetConfig.ServerPort, useWss: false);
+            // -connect host  →  wss://host:443 (e.g. smoke-testing production from a desktop build)
+            string remote = GetArg("-connect");
+            if (remote != null)
+                ConfigureClient(remote, 443, useWss: true);
+            else
+                ConfigureClient("localhost", NetConfig.ServerPort, useWss: false);
             if (SmokeTestDriver.Requested)
                 gameObject.AddComponent<SmokeTestDriver>();
             if (HasArg("-server"))
@@ -94,5 +99,12 @@ namespace Jam.Net
         }
 
         private static bool HasArg(string arg) => Array.IndexOf(Environment.GetCommandLineArgs(), arg) >= 0;
+
+        private static string GetArg(string name)
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            int i = Array.IndexOf(args, name);
+            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
     }
 }

@@ -40,3 +40,4 @@ infra/.terraform.tfstate.lock.info
 .DS_Store
 Thumbs.db
 .vscode/
+infra/tfplan

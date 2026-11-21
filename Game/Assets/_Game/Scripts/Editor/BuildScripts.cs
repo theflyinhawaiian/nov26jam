@@ -46,6 +46,7 @@ namespace Jam.EditorTools
             {
                 scenes = Scenes,
                 target = BuildTarget.StandaloneWindows64,
+                subtarget = (int)StandaloneBuildSubtarget.Player,
                 locationPathName = Path.Combine(BuildsRoot, "Win", "Game.exe"),
                 options = BuildOptions.Development,
             });
