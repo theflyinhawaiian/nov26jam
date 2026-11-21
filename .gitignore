@@ -1,0 +1,42 @@
+# Unity (project lives in Game/)
+Game/[Ll]ibrary/
+Game/[Tt]emp/
+Game/[Oo]bj/
+Game/[Bb]uild/
+Game/[Bb]uilds/
+Game/[Ll]ogs/
+Game/[Uu]ser[Ss]ettings/
+Game/[Mm]emoryCaptures/
+Game/[Rr]ecordings/
+Game/.vs/
+Game/.idea/
+Game/*.csproj
+Game/*.sln
+Game/*.slnx
+Game/*.user
+Game/*.pidb
+Game/*.booproj
+Game/*.svd
+Game/*.pdb
+Game/*.mdb
+Game/*.opendb
+Game/*.VC.db
+Game/sysinfo.txt
+Game/crashlytics-buildid.txt
+Game/Assets/AssetStoreTools*
+Game/Assets/StreamingAssets/aa*
+# Build outputs (kept outside the Unity project)
+Builds/
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars
+infra/crash.log
+infra/.terraform.tfstate.lock.info
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
