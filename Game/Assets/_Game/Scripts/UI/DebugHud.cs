@@ -76,9 +76,9 @@ namespace Jam.UI
 
         private void Update()
         {
-            if (UnityEngine.InputSystem.Keyboard.current?.f3Key.wasPressedThisFrame == true)
+            if (UnityEngine.InputSystem.Keyboard.current?.backquoteKey.wasPressedThisFrame == true)
                 FireDiagnostics.Enabled = !FireDiagnostics.Enabled;
-            if (FireDiagnostics.Enabled && UnityEngine.InputSystem.Keyboard.current?.f4Key.wasPressedThisFrame == true)
+            if (FireDiagnostics.Enabled && UnityEngine.InputSystem.Keyboard.current?.tKey.wasPressedThisFrame == true)
                 TeleportToEnemySpawn();
 
             float scale = Screen.height / ReferenceHeight;
@@ -156,8 +156,8 @@ namespace Jam.UI
         }
 
         /// <summary>
-        /// Debug: put the local player just in front of the opponent's spawn (6 units toward the
-        /// centre). Movement is client-authoritative, so this is a local teleport; NetworkTransform
+        /// Debug: put the local player just in front of the opponent's spawn: the first spot at
+        /// least 6 units toward the centre that isn't on a jump pad. Movement is client-authoritative, so this is a local teleport; NetworkTransform
         /// snaps it on the other screens. Needs to be whitelisted once the server validates movement (M5).
         /// </summary>
         private void TeleportToEnemySpawn()
@@ -172,8 +172,18 @@ namespace Jam.UI
             {
                 if (sp.Team == me.Team.Value)
                     continue;
-                Vector2 p = sp.transform.position;
-                me.Motor.Teleport(new Vector2(p.x - Mathf.Sign(p.x) * 6f, p.y));
+                Vector2 spawn = sp.transform.position;
+                float towardCentre = -Mathf.Sign(spawn.x);
+                PhysicsScene2D physics = me.ArenaPhysics;
+                for (float d = 6f; d <= 30f; d += 0.5f)
+                {
+                    Vector2 candidate = new(spawn.x + towardCentre * d, spawn.y);
+                    if (!physics.OverlapBox(candidate, me.HitboxSize, 0f, Layers.JumpPadMask))
+                    {
+                        me.Motor.Teleport(candidate);
+                        return;
+                    }
+                }
                 return;
             }
         }
@@ -214,7 +224,7 @@ namespace Jam.UI
             if (opp != null)
                 GUILayout.Label(opp.IsDead.Value ? $"{opp.Nickname.Value}: DEAD" : $"{opp.Nickname.Value}: {opp.Health.Value}/{PlayerAvatar.MaxHealth} HP");
 
-            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, F3 debug" + (FireDiagnostics.Enabled ? ", F4 TP to enemy spawn" : ""));
+            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, ` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" : ""));
 
             if (FireDiagnostics.Enabled)
             {
