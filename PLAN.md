@@ -167,6 +167,10 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - Nexus health and the win condition.
 
 **M4 · Match flow.** Menu, nickname, Find match queue, waiting screen, countdown, results, disconnect = win, unloading the arena copy. Also retry the lobby connection automatically: in M1, Bayou sometimes dropped connections when 4 clients connected at the same instant.
+- Done and verified locally with bots: 3-second countdown (no moving or firing until it ends), nexus win → results → requeue into a second match, disconnect = win, two concurrent matches, arena copies unloaded, reconnect with backoff when the server isn't up yet.
+- `GameMenu` (IMGUI) is the player-facing flow; Esc opens a "leave match" prompt. `DebugHud` is now debug and stats only.
+- A match where a player hasn't loaded the arena after 20 seconds is cancelled with no winner.
+- Not done: reconnecting into a match in progress (out of scope). The title "NEXUS DUEL" is a placeholder.
 
 **M5 · Validation and HUD.** Server checks for movement and cooldowns, shot-origin check, HUD, opponent arrow, tuning.
 
