@@ -20,6 +20,7 @@ namespace Jam.Net
     public class MatchManager : MonoBehaviour
     {
         [SerializeField] private NetworkObject _playerPrefab;
+        [SerializeField] private NetworkObject _matchStatePrefab;
 
         [Tooltip("Ticks subtracted from the shooter's LastPacketTick when rewinding for hitscan. Tuned from the M1 debug readout.")]
         [SerializeField] private float _rewindOffsetTicks = 0f;
@@ -32,6 +33,7 @@ namespace Jam.Net
         private readonly Dictionary<NetworkConnection, Match> _matchByConn = new();
         private readonly Dictionary<NetworkConnection, string> _nicknames = new();
         private int _nextMatchId;
+        private readonly List<(Match match, int winner)> _pendingEnds = new();
 
         private void Awake()
         {
@@ -56,6 +58,15 @@ namespace Jam.Net
             _nm.ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             _nm.SceneManager.OnLoadEnd -= OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd -= OnClientPresenceChangeEnd;
+        }
+
+        private void Update()
+        {
+            if (_pendingEnds.Count == 0)
+                return;
+            foreach ((Match m, int winner) in _pendingEnds)
+                EndMatch(m, winner, "nexus destroyed");
+            _pendingEnds.Clear();
         }
 
         public bool TryGetMatch(Scene scene, out Match match)
@@ -92,7 +103,7 @@ namespace Jam.Net
             if (_queue.Remove(conn))
                 Send(conn, MatchStatus.Idle, 0, "Left the queue.");
             else if (_matchByConn.TryGetValue(conn, out Match m))
-                EndMatch(m, conn, "Opponent left the match.");
+                EndMatch(m, 1 - m.TeamOf(conn), "your opponent left", leaver: conn);
         }
 
         private void TryMakeMatches()
@@ -148,6 +159,14 @@ namespace Jam.Net
                 return;
 
             m.Scene = args.LoadedScenes[0];
+            m.CacheSceneObjects();
+
+            NetworkObject stateNob = Instantiate(_matchStatePrefab);
+            _nm.ServerManager.Spawn(stateNob, null, m.Scene);
+            m.State = stateNob.GetComponent<MatchState>();
+            // Deferred: this fires from inside damage code that may be iterating the match's lists.
+            m.State.ServerNexusDestroyed += winner => _pendingEnds.Add((m, winner));
+
             // Clients that already finished loading (e.g. clientHost) won't raise a presence event later.
             foreach (NetworkConnection p in m.Players)
                 if (p.Scenes.Contains(m.Scene))
@@ -168,22 +187,14 @@ namespace Jam.Net
                 return;
 
             int team = m.TeamOf(conn);
-            Vector3 pos = FindSpawn(m.Scene, team);
-            NetworkObject nob = Instantiate(_playerPrefab, pos, Quaternion.identity);
+            NetworkObject nob = Instantiate(_playerPrefab, m.SpawnPosition(team), Quaternion.identity);
             PlayerAvatar avatar = nob.GetComponent<PlayerAvatar>();
             avatar.Team.Value = team;
             avatar.Nickname.Value = GetNickname(conn);
+            avatar.Match = m;
             _nm.ServerManager.Spawn(nob, conn, m.Scene);
             m.Avatars.Add(avatar);
-        }
-
-        private static Vector3 FindSpawn(Scene scene, int team)
-        {
-            foreach (GameObject root in scene.GetRootGameObjects())
-                foreach (SpawnPoint sp in root.GetComponentsInChildren<SpawnPoint>())
-                    if (sp.Team == team)
-                        return sp.transform.position;
-            return Vector3.zero;
+            Debug.Log($"[MatchManager] Spawned avatar {nob.ObjectId} for client {conn.ClientId} in match {m.Id}");
         }
 
         private void OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
@@ -193,15 +204,20 @@ namespace Jam.Net
             _queue.Remove(conn);
             _nicknames.Remove(conn);
             if (_matchByConn.TryGetValue(conn, out Match m))
-                EndMatch(m, conn, "Opponent disconnected.");
+                EndMatch(m, 1 - m.TeamOf(conn), "your opponent disconnected", leaver: conn);
         }
 
-        /// <summary>Ends a match; everyone except <paramref name="leaver"/> is told why and sent back to the lobby.</summary>
-        private void EndMatch(Match m, NetworkConnection leaver, string reason)
+        /// <summary>
+        /// Ends a match: each remaining player is told whether they won and why, then sent back
+        /// to the lobby. <paramref name="leaver"/> (if any) just gets "You left the match."
+        /// </summary>
+        private void EndMatch(Match m, int winningTeam, string reason, NetworkConnection leaver = null)
         {
             if (m.Ended)
                 return;
             m.Ended = true;
+            if (m.State != null && m.State.Winner.Value < 0)
+                m.State.Winner.Value = winningTeam;
 
             foreach (PlayerAvatar a in m.Avatars)
                 if (a != null && a.IsSpawned)
@@ -215,10 +231,15 @@ namespace Jam.Net
                     continue;
                 if (m.SceneLoaded)
                     _nm.SceneManager.UnloadConnectionScenes(p, new SceneUnloadData(m.Scene));
-                Send(p, MatchStatus.Ended, m.Id, p == leaver ? "You left the match." : reason);
+                string message = p == leaver ? "You left the match."
+                    : m.TeamOf(p) == winningTeam ? $"You win: {reason}!"
+                    : $"You lose: {reason}.";
+                Send(p, MatchStatus.Ended, m.Id, message);
             }
+            if (m.State != null && m.State.IsSpawned)
+                _nm.ServerManager.Despawn(m.State.NetworkObject);
             _matches.Remove(m.Id);
-            Debug.Log($"[MatchManager] Ended match {m.Id}: {reason}");
+            Debug.Log($"[MatchManager] Ended match {m.Id}: team {winningTeam} won ({reason})");
         }
         #endregion
 

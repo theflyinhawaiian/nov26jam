@@ -14,6 +14,9 @@ namespace Jam.UI
         private static readonly Queue<float> _errors = new();
         private static readonly Queue<float> _bestOffsets = new();
 
+        /// <summary>Show rewind ghosts and the readout (toggle with F3).</summary>
+        public static bool Enabled;
+
         public static int Shots { get; private set; }
         public static int Hits { get; private set; }
         public static bool LastHit { get; private set; }

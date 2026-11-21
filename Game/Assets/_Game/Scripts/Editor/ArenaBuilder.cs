@@ -110,7 +110,8 @@ namespace Jam.EditorTools
             for (int team = 0; team < 2; team++)
             {
                 float s = team == 0 ? -1f : 1f;
-                Block(bases, team == 0 ? "Nexus Blue" : "Nexus Red", CenterBottom(s * NexusX, ArenaLayout.MidFloorY, NexusWidth, NexusHeight), TeamColors[team], 2, Layers.Ground);
+                GameObject nexus = Block(bases, team == 0 ? "Nexus Blue" : "Nexus Red", CenterBottom(s * NexusX, ArenaLayout.MidFloorY, NexusWidth, NexusHeight), TeamColors[team], 2, Layers.Ground);
+                nexus.AddComponent<Nexus>().Team = team;
                 GameObject spawn = new(team == 0 ? "Spawn Blue" : "Spawn Red");
                 spawn.transform.SetParent(bases, false);
                 spawn.transform.position = new Vector3(s * SpawnX, ArenaLayout.MidFloorY + 0.8f, 0f);

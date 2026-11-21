@@ -18,7 +18,11 @@ namespace Jam.Net
         public readonly NetworkConnection[] Players;
         public readonly List<PlayerAvatar> Avatars = new();
         public Scene Scene;
+        public MatchState State;
         public bool Ended;
+
+        private readonly Vector2[] _spawns = new Vector2[2];
+        private readonly Nexus[] _nexuses = new Nexus[2];
 
         public Match(int id, NetworkConnection[] players)
         {
@@ -29,6 +33,34 @@ namespace Jam.Net
         public bool SceneLoaded => Scene.IsValid() && Scene.isLoaded;
         public PhysicsScene2D Physics => Scene.GetPhysicsScene2D();
         public int TeamOf(NetworkConnection conn) => Array.IndexOf(Players, conn);
+        public Vector2 SpawnPosition(int team) => _spawns[Mathf.Clamp(team, 0, 1)];
+        public IReadOnlyList<Nexus> Nexuses => _nexuses;
+
+        /// <summary>Call once the arena scene has loaded.</summary>
+        public void CacheSceneObjects()
+        {
+            foreach (GameObject root in Scene.GetRootGameObjects())
+            {
+                foreach (SpawnPoint sp in root.GetComponentsInChildren<SpawnPoint>())
+                    _spawns[Mathf.Clamp(sp.Team, 0, 1)] = sp.transform.position;
+                foreach (Nexus n in root.GetComponentsInChildren<Nexus>())
+                    _nexuses[Mathf.Clamp(n.Team, 0, 1)] = n;
+            }
+        }
+
+        public bool TryGetNexus(Collider2D collider, out Nexus nexus)
+        {
+            foreach (Nexus n in _nexuses)
+            {
+                if (n != null && n.Collider == collider)
+                {
+                    nexus = n;
+                    return true;
+                }
+            }
+            nexus = null;
+            return false;
+        }
 
         public bool HasAvatarFor(NetworkConnection conn)
         {

@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 7689445827361749788}
   - component: {fileID: 7118838112963387493}
   - component: {fileID: 1675674586312478017}
+  - component: {fileID: 5779633150495609191}
   - component: {fileID: 3562334939760877738}
   m_Layer: 0
   m_Name: Player
@@ -118,8 +119,8 @@ MonoBehaviour:
   _useScaledTime: 1
   _interpolation: 2
   _extrapolation: 2
-  _enableTeleport: 0
-  _teleportThreshold: 1
+  _enableTeleport: 1
+  _teleportThreshold: 4
   _clientAuthoritative: 1
   _sendToOwner: 1
   _useLevelOfDetail: 0
@@ -180,6 +181,24 @@ MonoBehaviour:
   _jumpBufferTime: 0.12
   _dropThroughTime: 0.25
   Velocity: {x: 0, y: 0}
+--- !u!114 &5779633150495609191
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2286418313938356266}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fcd039e97e1e5804bb6546a6f6a5b349, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Jam.Gameplay.PlayerWeapons
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 947897344342945034}
+  _networkObjectCache: {fileID: 0}
+  _weapons:
+  - {fileID: 11400000, guid: 72b05ffa362775d41989377df85d3c48, type: 2}
+  - {fileID: 11400000, guid: 8f7dcfcff9cf16e4fa98bde6ae7858f1, type: 2}
 --- !u!114 &3562334939760877738
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -197,8 +216,6 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 0}
   _body: {fileID: 2844201949561854108}
   _hitboxSize: {x: 1, y: 1.5}
-  _rifleRange: 24
-  _rifleCooldown: 0.2
 --- !u!1 &6094728902222128026
 GameObject:
   m_ObjectHideFlags: 0

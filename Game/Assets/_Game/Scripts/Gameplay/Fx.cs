@@ -37,6 +37,13 @@ namespace Jam.Gameplay
             Object.Destroy(Quad("Ghost", center, size, color, 15), duration);
         }
 
+        public static void Explosion(Vector2 center, float radius)
+        {
+            if (Application.isBatchMode)
+                return;
+            Object.Destroy(Quad("Explosion", center, Vector2.one * radius * 2f, new Color(1f, 0.55f, 0.1f, 0.45f), 19), 0.15f);
+        }
+
         private static GameObject Quad(string name, Vector2 center, Vector2 size, Color color, int sortingOrder)
         {
             GameObject go = new(name);

@@ -1,53 +1,85 @@
+using System.Collections;
 using FishNet.Connection;
-using FishNet.Managing.Timing;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Jam.Net;
-using Jam.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Jam.Gameplay
 {
     /// <summary>
-    /// Player avatar: client-authoritative platformer movement (PlatformerMotor + NetworkTransform),
-    /// and a hitscan rifle resolved on the server against rewound positions.
+    /// Player avatar: identity, health/death/respawn (server-owned), and client-authoritative
+    /// platformer movement (PlatformerMotor + NetworkTransform). Weapons live in PlayerWeapons.
     /// </summary>
-    [RequireComponent(typeof(PositionHistory), typeof(PlatformerMotor))]
+    [RequireComponent(typeof(PositionHistory), typeof(PlatformerMotor), typeof(PlayerWeapons))]
     public class PlayerAvatar : NetworkBehaviour
     {
+        public const int MaxHealth = 100;
+        public const float RespawnSeconds = 10f;
+
         public readonly SyncVar<int> Team = new();
         public readonly SyncVar<string> Nickname = new();
-        public readonly SyncVar<int> TimesHit = new();
+        public readonly SyncVar<int> Health = new(MaxHealth);
+        public readonly SyncVar<bool> IsDead = new();
+        public readonly SyncVar<uint> RespawnTick = new();
+        public readonly SyncVar<int> Deaths = new();
 
         [SerializeField] private SpriteRenderer _body;
         [SerializeField] private Vector2 _hitboxSize = new(1f, 1.5f);
-        [SerializeField] private float _rifleRange = 24f;
-        [SerializeField] private float _rifleCooldown = 0.2f;
 
         private static readonly Color[] TeamColors = { new(0.3f, 0.55f, 1f), new(1f, 0.35f, 0.3f) };
 
         public PositionHistory History { get; private set; }
         public PlatformerMotor Motor { get; private set; }
+        public PlayerWeapons Weapons { get; private set; }
+        /// <summary>Server only: the match this avatar was spawned into.</summary>
+        public Match Match { get; set; }
         public Vector2 HitboxSize => _hitboxSize;
 
-        private float _nextFireTime;
-        private float _serverNextFireTime;
+        /// <summary>Overrides keyboard input when set (smoke-test driver).</summary>
+        public MotorInput? ScriptedInput;
+
+        private Coroutine _flash;
 
         public Rect HitboxAt(Vector2 center) => new(center - _hitboxSize * 0.5f, _hitboxSize);
+
+        public float RespawnSecondsRemaining =>
+            IsDead.Value ? Mathf.Max(0f, (float)((long)RespawnTick.Value - TimeManager.Tick) * (float)TimeManager.TickDelta) : 0f;
+
+        /// <summary>
+        /// Physics scene of the arena this avatar lives in. On the server that's the avatar's own
+        /// (stacked) scene; a client only ever has one arena loaded.
+        /// </summary>
+        public PhysicsScene2D ArenaPhysics =>
+            gameObject.scene.name == NetConfig.ArenaScene
+                ? gameObject.scene.GetPhysicsScene2D()
+                : UnityEngine.SceneManagement.SceneManager.GetSceneByName(NetConfig.ArenaScene).GetPhysicsScene2D();
 
         private void Awake()
         {
             History = GetComponent<PositionHistory>();
             Motor = GetComponent<PlatformerMotor>();
+            Weapons = GetComponent<PlayerWeapons>();
             if (_body != null && _body.sprite == null)
                 _body.sprite = Fx.WhiteSprite;
+        }
+
+        public override void OnStartServer()
+        {
+            TimeManager.OnTick += ServerTick;
+        }
+
+        public override void OnStopServer()
+        {
+            TimeManager.OnTick -= ServerTick;
         }
 
         public override void OnStartClient()
         {
             Team.OnChange += OnTeamChanged;
-            ApplyTeamColor();
+            IsDead.OnChange += OnDeadChanged;
+            ApplyVisuals();
             if (IsOwner && Camera.main != null && Camera.main.TryGetComponent(out CameraFollow follow))
                 follow.Target = transform;
         }
@@ -55,31 +87,24 @@ namespace Jam.Gameplay
         public override void OnStopClient()
         {
             Team.OnChange -= OnTeamChanged;
+            IsDead.OnChange -= OnDeadChanged;
         }
 
-        private void OnTeamChanged(int prev, int next, bool asServer) => ApplyTeamColor();
+        private void OnTeamChanged(int prev, int next, bool asServer) => ApplyVisuals();
+        private void OnDeadChanged(bool prev, bool next, bool asServer) => ApplyVisuals();
 
-        private void ApplyTeamColor()
+        private void ApplyVisuals()
         {
-            if (_body != null)
-                _body.color = TeamColors[Mathf.Clamp(Team.Value, 0, TeamColors.Length - 1)];
+            if (_body == null)
+                return;
+            _body.color = TeamColors[Mathf.Clamp(Team.Value, 0, TeamColors.Length - 1)];
+            _body.enabled = !IsDead.Value;
         }
 
         private void Update()
         {
-            if (!IsOwner)
+            if (!IsOwner || IsDead.Value)
                 return;
-            Move();
-            Mouse mouse = Mouse.current;
-            if (mouse != null && mouse.leftButton.isPressed && !DebugHud.PointerOverHud)
-                Fire(mouse);
-        }
-
-        /// <summary>Overrides keyboard input when set (smoke-test driver).</summary>
-        public MotorInput? ScriptedInput;
-
-        private void Move()
-        {
             Motor.Step(ScriptedInput ?? ReadKeyboard(), Time.deltaTime, ArenaPhysics);
         }
 
@@ -99,128 +124,61 @@ namespace Jam.Gameplay
             };
         }
 
-        /// <summary>
-        /// Physics scene of the arena this avatar lives in. On the server that's the avatar's own
-        /// (stacked) scene; a client only ever has one arena loaded.
-        /// </summary>
-        private PhysicsScene2D ArenaPhysics =>
-            gameObject.scene.name == NetConfig.ArenaScene
-                ? gameObject.scene.GetPhysicsScene2D()
-                : UnityEngine.SceneManagement.SceneManager.GetSceneByName(NetConfig.ArenaScene).GetPhysicsScene2D();
-
-        #region Rifle
-        private void Fire(Mouse mouse)
+        #region Health (server)
+        [Server]
+        public void TakeDamage(int amount)
         {
-            Camera cam = Camera.main;
-            if (cam != null)
-                FireAt(cam.ScreenToWorldPoint(mouse.position.ReadValue()));
-        }
-
-        /// <summary>Owner only. Public so the smoke-test driver can shoot without input devices.</summary>
-        public void FireAt(Vector2 worldPoint)
-        {
-            if (!IsOwner || Time.time < _nextFireTime)
+            if (IsDead.Value || amount <= 0)
                 return;
-            _nextFireTime = Time.time + _rifleCooldown;
-
-            Vector2 origin = transform.position;
-            Vector2 aim = worldPoint - origin;
-            if (aim.sqrMagnitude < 1e-4f)
-                return;
-            aim.Normalize();
-
-            // Immediate local tracer (terrain only); the server decides what was actually hit.
-            RaycastHit2D hit = ArenaPhysics.Raycast(origin, aim, _rifleRange, Layers.GroundMask);
-            Fx.Tracer(origin, hit.collider != null ? hit.point : origin + aim * _rifleRange, Color.yellow);
-
-            // M1 diagnostics: report where we currently see the opponent so the server can
-            // measure how well its rewind matches. Not used for hit decisions.
-            PlayerAvatar opponent = FindOpponent();
-            Vector2 seen = opponent != null ? (Vector2)opponent.transform.position : Vector2.zero;
-            if (opponent != null)
-                Fx.Ghost(seen, _hitboxSize, new Color(0.2f, 1f, 0.2f, 0.5f));
-
-            ServerFire(origin, aim, TimeManager.GetPreciseTick(TickType.LastPacketTick), seen, opponent != null);
-        }
-
-        /// <summary>Client side only.</summary>
-        public PlayerAvatar FindOpponent()
-        {
-            // Observers ensure a client only knows about avatars in its own match.
-            foreach (PlayerAvatar a in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-                if (a != this)
-                    return a;
-            return null;
-        }
-
-        [ServerRpc]
-        private void ServerFire(Vector2 origin, Vector2 direction, PreciseTick pt, Vector2 seenOpponent, bool hasSeen)
-        {
-            // Allow a little jitter between client and server clocks.
-            if (Time.time < _serverNextFireTime)
-                return;
-            _serverNextFireTime = Time.time + _rifleCooldown * 0.8f;
-
-            MatchManager mm = NetworkManager.GetComponent<MatchManager>();
-            if (mm == null || !mm.TryGetMatch(gameObject.scene, out Match match))
-                return;
-
-            // The shot has to start roughly where the server believes the shooter is.
-            if (Vector2.Distance(origin, transform.position) > 2f)
-                origin = transform.position;
-
-            double shooterTick = pt.Tick + pt.PercentAsDouble;
-            double rewindTick = shooterTick - mm.RewindOffsetTicks;
-            HitscanResult result = LagCompensation.Raycast(match, this, origin, direction, _rifleRange, rewindTick);
-            if (result.Target != null)
-                result.Target.TimesHit.Value++;
-
-            ObserversTracer(origin, result.EndPoint);
-
-            if (hasSeen)
-                SendDiagnostics(match, seenOpponent, shooterTick, rewindTick, result, pt);
-        }
-
-        private void SendDiagnostics(Match match, Vector2 seenOpponent, double shooterTick, double rewindTick, HitscanResult result, PreciseTick pt)
-        {
-            PlayerAvatar opponent = null;
-            foreach (PlayerAvatar a in match.Avatars)
-                if (a != null && a != this)
-                    opponent = a;
-            if (opponent == null)
-                return;
-
-            Vector2 rewound = opponent.History.GetPosition(rewindTick);
-            float error = Vector2.Distance(rewound, seenOpponent);
-
-            // Which rewind offset would have best reproduced what the client saw?
-            float bestOffset = 0f;
-            float bestError = float.MaxValue;
-            for (float offset = -6f; offset <= 6f; offset += 0.5f)
+            Health.Value = Mathf.Max(0, Health.Value - amount);
+            ObserversDamageFlash();
+            if (Health.Value == 0)
             {
-                float e = Vector2.Distance(opponent.History.GetPosition(shooterTick - offset), seenOpponent);
-                if (e < bestError)
-                {
-                    bestError = e;
-                    bestOffset = offset;
-                }
+                IsDead.Value = true;
+                Deaths.Value++;
+                RespawnTick.Value = TimeManager.Tick + TimeManager.TimeToTicks(RespawnSeconds);
             }
-
-            TargetFireDiagnostics(Owner, result.Target != null, rewound, error, bestOffset, bestError, (int)(TimeManager.Tick - pt.Tick));
         }
 
-        [ObserversRpc(ExcludeOwner = true)]
-        private void ObserversTracer(Vector2 from, Vector2 to)
+        private void ServerTick()
         {
-            Fx.Tracer(from, to, Color.yellow);
+            if (IsDead.Value && TimeManager.Tick >= RespawnTick.Value)
+                Respawn();
+        }
+
+        [Server]
+        private void Respawn()
+        {
+            Vector2 spawn = Match != null ? Match.SpawnPosition(Team.Value) : (Vector2)transform.position;
+            Health.Value = MaxHealth;
+            IsDead.Value = false;
+            // Movement is client-authoritative, so the owner performs the teleport.
+            TargetTeleport(Owner, spawn);
         }
 
         [TargetRpc]
-        private void TargetFireDiagnostics(NetworkConnection conn, bool hit, Vector2 rewound, float error, float bestOffset, float bestError, int ticksBehind)
+        private void TargetTeleport(NetworkConnection conn, Vector2 position)
         {
-            Fx.Ghost(rewound, _hitboxSize, hit ? new Color(1f, 0.2f, 0.2f, 0.6f) : new Color(1f, 1f, 1f, 0.4f));
-            FireDiagnostics.Record(hit, error, bestOffset, bestError, ticksBehind);
+            Motor.Teleport(position);
         }
         #endregion
+
+        [ObserversRpc]
+        private void ObserversDamageFlash()
+        {
+            if (_body == null || !isActiveAndEnabled)
+                return;
+            if (_flash != null)
+                StopCoroutine(_flash);
+            _flash = StartCoroutine(Flash());
+        }
+
+        private IEnumerator Flash()
+        {
+            _body.color = Color.white;
+            yield return new WaitForSeconds(0.08f);
+            ApplyVisuals();
+            _flash = null;
+        }
     }
 }

@@ -65,6 +65,9 @@ namespace Jam.UI
 
         private void Update()
         {
+            if (UnityEngine.InputSystem.Keyboard.current?.f3Key.wasPressedThisFrame == true)
+                FireDiagnostics.Enabled = !FireDiagnostics.Enabled;
+
             float scale = Screen.height / ReferenceHeight;
             Vector2 mouse = UnityEngine.InputSystem.Mouse.current?.position.ReadValue() ?? Vector2.negativeInfinity;
             Vector2 guiMouse = new Vector2(mouse.x, Screen.height - mouse.y) / scale;
@@ -140,13 +143,49 @@ namespace Jam.UI
 
         private void DrawMatch()
         {
+            PlayerAvatar me = null, opp = null;
             foreach (PlayerAvatar a in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-                GUILayout.Label($"{(a.IsOwner ? "You" : "Opp")}: {a.Nickname.Value}  team {a.Team.Value}  hit {a.TimesHit.Value}x");
+            {
+                if (a.IsOwner) me = a;
+                else opp = a;
+            }
 
-            GUILayout.Label("WASD move, LMB fire.\nGreen = where you saw them, red/white = server rewind (red = hit).");
-            GUILayout.Label($"Shots {FireDiagnostics.Shots}  hits {FireDiagnostics.Hits}  last {(FireDiagnostics.LastHit ? "HIT" : "miss")}");
-            GUILayout.Label($"Rewind error: last {FireDiagnostics.LastError:0.00}u  median {FireDiagnostics.MedianError:0.00}u");
-            GUILayout.Label($"Best offset (median): {FireDiagnostics.MedianBestOffset:0.0} ticks  |  shot age {FireDiagnostics.LastTicksBehind} ticks");
+            MatchState state = FindAnyObjectByType<MatchState>();
+            if (state != null)
+            {
+                string blue = $"Blue nexus {state.BlueNexusHealth.Value}/{MatchState.NexusMaxHealth}";
+                string red = $"Red nexus {state.RedNexusHealth.Value}/{MatchState.NexusMaxHealth}";
+                GUILayout.Label($"{blue}   {red}");
+            }
+
+            if (me != null)
+            {
+                string team = me.Team.Value == 0 ? "Blue" : "Red";
+                GUILayout.Label(me.IsDead.Value
+                    ? $"You ({team}): DEAD, respawn in {me.RespawnSecondsRemaining:0.0}s"
+                    : $"You ({team}): {me.Health.Value}/{PlayerAvatar.MaxHealth} HP");
+
+                PlayerWeapons w = me.Weapons;
+                string weapons = "";
+                for (int i = 0; i < w.Count; i++)
+                {
+                    string cd = w.CooldownRemaining(i) > 0f ? $" {w.CooldownRemaining(i):0.0}s" : "";
+                    weapons += (i == w.CurrentIndex ? $"[{i + 1} {w.Get(i).DisplayName}{cd}]" : $" {i + 1} {w.Get(i).DisplayName}{cd} ") + "  ";
+                }
+                GUILayout.Label(weapons);
+            }
+            if (opp != null)
+                GUILayout.Label(opp.IsDead.Value ? $"{opp.Nickname.Value}: DEAD" : $"{opp.Nickname.Value}: {opp.Health.Value}/{PlayerAvatar.MaxHealth} HP");
+
+            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, F3 debug");
+
+            if (FireDiagnostics.Enabled)
+            {
+                GUILayout.Label("Green = where you saw them, red/white = server rewind (red = hit).");
+                GUILayout.Label($"Rifle shots {FireDiagnostics.Shots}  hits {FireDiagnostics.Hits}  last {(FireDiagnostics.LastHit ? "HIT" : "miss")}");
+                GUILayout.Label($"Rewind error: last {FireDiagnostics.LastError:0.00}u  median {FireDiagnostics.MedianError:0.00}u");
+                GUILayout.Label($"Best offset (median): {FireDiagnostics.MedianBestOffset:0.0} ticks  |  shot age {FireDiagnostics.LastTicksBehind} ticks");
+            }
         }
     }
 }

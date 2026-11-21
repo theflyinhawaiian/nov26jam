@@ -160,7 +160,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 
 **M2 · Movement and arena.** Kinematic controller, one-way platforms, drop-through, jump pads, camera, the 128×90 greybox, spawns.
 
-**M3 · Combat.**
+**M3 · Combat.** Done and verified locally with bots: deaths and respawns, grenade splash, nexus destroyed → win/lose message.
 - Rifle with server-side rewind.
 - Grenades simulated identically on every client, explosions decided by the server.
 - Health, death, 10-second respawn.
