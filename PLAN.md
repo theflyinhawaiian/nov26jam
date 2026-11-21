@@ -89,7 +89,7 @@ y=0  └────────────────────────
 | Player position and aim | Owning client | FishNet `NetworkTransform` with client authority; others see it slightly delayed and smoothed. |
 | Movement plausibility | Server | Each tick, compare distance moved with what's possible (run speed, jump-pad speed, maximum fall speed, plus tolerance). On failure, send a forced-teleport RPC to the owner. Respawns use the same RPC. |
 | Hitscan hits | Server | The client fires immediately and draws a local tracer, then sends weapon, aim, origin and `PreciseTick` (`LastPacketTick`) to the server. The server checks the cooldown and the origin, looks up each opponent in its own per-tick `PositionHistory` at that tick (minus a tunable offset) and tests the ray against those hitboxes. It raycasts terrain in the match's own 2D physics, then applies damage and relays the tracer. **FishNet's `RollbackManager` is a Pro feature and is stubbed in the free package**, so we use our own `PositionHistory` + `LagCompensation`. |
-| Grenades | Server | Not network objects. The client sends start position, velocity and tick. After checking, the server broadcasts them, and every client simulates the same arc, fast-forwarding by how late the message arrived. **Only the server detects the impact.** It broadcasts "exploded at this position", and clients remove their copy and show the explosion. |
+| Grenades | Server | Not network objects. The client sends start position, velocity and tick. After checking, the server broadcasts them, and every client simulates the same arc. **Only the server detects the impact.** Other players' clients get the grenade late, so they play the arc from the thrower as they see them, on a clock running about 1.33× until it catches up with the real grenade (fast-forwarding instead made it pop in several units away from the thrower). It broadcasts "exploded at this position", and clients remove their copy and show the explosion. |
 | Player and nexus health | Server | `SyncVar<int>` |
 | Death, respawn, match state | Server | Synced state plus RPCs (countdown, respawn time, winner). |
 | Nickname | Server | Sent by the client after connecting; trimmed to 16 characters and stored per connection. |
@@ -141,7 +141,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - **Security group:** 80 and 443 open to everyone (plus 7771 if `/ws` doesn't work); 22 only from your IP.
 - **Elastic IP:** keeps the Porkbun record stable.
 - **user_data:** installs Caddy and writes the Caddyfile, then sets up `game-server.service`:
-  - runs `/opt/game/Server.x86_64 -batchmode -nographics -logfile /var/log/game/server.log`
+  - runs `/opt/game/Server.x86_64 -batchmode -nographics -logfile -` (logs go to journald: `journalctl -u game-server`)
   - restarts on failure and runs as a non-root user.
 - **Budget alarm:** `aws_budgets_budget` at $25, emailing on actual or forecast spend.
 - **Estimated cost per month:** about $7.60 (t3.micro) + $3.65 (public IPv4) + $0.65 (disk) ≈ **$12**. Outbound data is well within the free 100 GB.
@@ -171,6 +171,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - `GameMenu` (IMGUI) is the player-facing flow; Esc opens a "leave match" prompt. `DebugHud` is now debug and stats only.
 - A match where a player hasn't loaded the arena after 20 seconds is cancelled with no winner.
 - Not done: reconnecting into a match in progress (out of scope). The title "NEXUS DUEL" is a placeholder.
+- Deployed (`bde09e3`) and played in browsers on production. Fixed after a playtest: other players' grenades appeared in mid-air away from the thrower (see Grenades in §5).
 
 **M5 · Validation and HUD.** Server checks for movement and cooldowns, shot-origin check, HUD, opponent arrow, tuning.
 
@@ -181,7 +182,64 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - FishNet's latency simulator for lag.
 - Deploy a browser build to the production box at the end of each milestone.
 
-## 9. Risks
+## 9. Building and deploying
+
+Run everything from the repo root, not from inside `Builds/`: Unity deletes the output folder before building and fails if a shell is sitting in it. Close the Unity editor first, because batch mode can't open a project that's already open.
+
+In Git Bash:
+
+```bash
+cd ~/Projects/gamedev/nov26jam
+mkdir -p Builds
+UNITY="/c/Program Files/Unity/Hub/Editor/6000.6.10f1/Editor/Unity.exe"
+
+# 1. Commit first, so the build stamp shows the commit instead of "<hash>-dirty".
+git status --short
+
+# 2. Linux dedicated server → Builds/Server (about 1 minute)
+"$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildServer -logFile Builds/build-server.log
+
+# 3. The server build reorders Assets/DefaultPrefabObjects.asset (harmless). Undo it, or the
+#    web build's stamp says "-dirty".
+git checkout -- Game/Assets/DefaultPrefabObjects.asset
+
+# 4. Web build → Builds/Web (about 4 minutes)
+"$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildWeb -logFile Builds/build-web.log
+git checkout -- Game/Assets/DefaultPrefabObjects.asset
+
+# Check both succeeded (look for "Succeeded" and the stamp):
+grep -h "Build stamp\|\[BuildScripts\] .*: " Builds/build-server.log Builds/build-web.log
+
+# 5. Upload both builds and restart the game server. Needs the SSH key at ~/.ssh/nov26jam.
+scripts/deploy.sh            # or: scripts/deploy.sh server | scripts/deploy.sh web
+```
+
+`deploy.sh` copies the builds over SSH to the box. The server build goes to `/opt/game` and restarts `game-server`; the web build goes to `/srv/web`. It ends by printing the service status.
+
+**Check it worked:**
+
+```bash
+ssh -i ~/.ssh/nov26jam ubuntu@jam.pmullins.dev 'systemctl is-active game-server; ss -ltn | grep 7770'
+ssh -i ~/.ssh/nov26jam ubuntu@jam.pmullins.dev 'sudo journalctl -u game-server -n 50 --no-pager'
+```
+
+Then hard-refresh https://jam.pmullins.dev/ (Ctrl+F5). The debug panel in the top-left shows the client and server build stamps; both should match the commit you deployed.
+
+**Before DNS resolves**, point the script at the Elastic IP: `DEPLOY_HOST=<ip> scripts/deploy.sh`.
+
+**Local bot test before deploying** (optional):
+
+```bash
+"$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildWindowsDev -logFile Builds/build-win.log
+Builds/Win/Game.exe -batchmode -nographics -server -logFile Builds/srv.log &
+Builds/Win/Game.exe -batchmode -nographics -client -smoketest -smokemode duel -smokeduration 25 -logFile Builds/a.log &
+Builds/Win/Game.exe -batchmode -nographics -client -smoketest -smokemode duel -smokeduration 25 -logFile Builds/b.log &
+sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Game.exe
+```
+
+Other bot options: `-smokemode attack|passive|selfnade`, `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
+
+## 10. Risks
 
 | Risk | What to do |
 |---|---|
@@ -192,6 +250,6 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 | No time limit means defensive play can stall | Tune nexus HP; add a time limit later only if playtests stall. |
 | Web build size and load time | Caddy compression, IL2CPP "Smaller" code optimization, stripping, no assets. |
 
-## 10. Left for later
+## 11. Left for later
 
 Room codes, towers, minion waves, jungle monsters, spawn protection, more weapons, reconnect, art and sound.
