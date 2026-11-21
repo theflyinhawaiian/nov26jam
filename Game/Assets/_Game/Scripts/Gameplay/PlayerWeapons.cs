@@ -22,6 +22,9 @@ namespace Jam.Gameplay
 
         /// <summary>Cap on how far the server fast-forwards a projectile to cover latency.</summary>
         private const float MaxCatchUpSeconds = 0.25f;
+        /// <summary>Range of the observer-side blend from the thrower onto the true grenade arc.</summary>
+        private const float MinVisualBlend = 0.15f;
+        private const float MaxVisualBlend = 0.4f;
 
         private PlayerAvatar _avatar;
         private float[] _nextFireLocal;
@@ -257,7 +260,17 @@ namespace Jam.Gameplay
         private void ObserversSpawnProjectile(byte index, ushort id, Vector2 origin, Vector2 velocity, uint serverTick, float serverAge)
         {
             float age = Mathf.Clamp(serverAge + (float)TimeManager.TimePassed(serverTick), 0f, MaxCatchUpSeconds * 2f);
-            _visuals[id] = GrenadeVisual.Spawn(origin, velocity, _weapons[index], age, _avatar.ArenaPhysics);
+            // We see the thrower late (interpolation) and the grenade early (fast-forward), so start it
+            // at the thrower as drawn here and blend onto the true arc. Purely visual: the server decides hits.
+            Vector2 shown = transform.position;
+            float blend = Mathf.Clamp(age * 2f, MinVisualBlend, MaxVisualBlend);
+            if (FireDiagnostics.Enabled || SmokeTestDriver.Requested)
+            {
+                Vector2 arc = Grenade.PositionAt(origin, velocity, _weapons[index].ProjectileGravity, age);
+                Debug.Log($"[Grenade] observer spawn: age {age:0.000}s, thrower shown {Vector2.Distance(shown, origin):0.00}u from true origin, " +
+                          $"true arc {Vector2.Distance(shown, arc):0.00}u from shown thrower; blending over {blend:0.00}s");
+            }
+            _visuals[id] = GrenadeVisual.Spawn(origin, velocity, _weapons[index], age, _avatar.ArenaPhysics, shown, blend);
         }
 
         private void SimulateProjectiles()
