@@ -22,7 +22,7 @@
 ```
 Browser ──HTTPS──▶ Caddy :443 ──▶ /srv/web (Unity Web build)
    │
-   └──WSS /ws──▶ Caddy :443 ──ws──▶ 127.0.0.1:7770  game-server (FishNet + Bayou, headless Linux)
+   └──WSS /  ───▶ Caddy :443 ──ws──▶ 127.0.0.1:7770  game-server (FishNet + Bayou, headless Linux)
                                                       ├─ Menu/Lobby (connections, nicknames, queue)
                                                       ├─ Arena copy #1 (match A, own 2D physics)
                                                       └─ Arena copy #2 (match B, own 2D physics)
@@ -30,7 +30,7 @@ Browser ──HTTPS──▶ Caddy :443 ──▶ /srv/web (Unity Web build)
 
 - One origin means no cross-origin issues and one Let's Encrypt certificate, which Caddy handles automatically.
 - Turn off Unity's web build compression and let Caddy compress instead (`encode zstd gzip`), so no special headers are needed for `.br` files.
-- **Check in M1:** can Bayou's client connect to `wss://host/ws`? If not, Caddy terminates TLS on `:7771` and forwards that instead.
+- **Settled in M1:** Bayou has no URL-path setting, so the client connects to `wss://host/` and Caddy sends requests with `Upgrade: websocket` to the game server and serves everything else as static files. That keeps it to one port.
 
 ## 3. Arena
 
@@ -88,7 +88,7 @@ y=0  └────────────────────────
 |---|---|---|
 | Player position and aim | Owning client | FishNet `NetworkTransform` with client authority; others see it slightly delayed and smoothed. |
 | Movement plausibility | Server | Each tick, compare distance moved with what's possible (run speed, jump-pad speed, maximum fall speed, plus tolerance). On failure, send a forced-teleport RPC to the owner. Respawns use the same RPC. |
-| Hitscan hits | Server | The client fires immediately and draws a local tracer, then sends weapon, aim, origin and `PreciseTick` to the server. The server checks the cooldown and that the origin is near where it thinks the player is, runs `RollbackManager` to that tick, raycasts in the match's own 2D physics, applies damage, and sends the tracer to the other client. |
+| Hitscan hits | Server | The client fires immediately and draws a local tracer, then sends weapon, aim, origin and `PreciseTick` (`LastPacketTick`) to the server. The server checks the cooldown and the origin, looks up each opponent in its own per-tick `PositionHistory` at that tick (minus a tunable offset) and tests the ray against those hitboxes. It raycasts terrain in the match's own 2D physics, then applies damage and relays the tracer. **FishNet's `RollbackManager` is a Pro feature and is stubbed in the free package**, so we use our own `PositionHistory` + `LagCompensation`. |
 | Grenades | Server | Not network objects. The client sends start position, velocity and tick. After checking, the server broadcasts them, and every client simulates the same arc, fast-forwarding by how late the message arrived. **Only the server detects the impact.** It broadcasts "exploded at this position", and clients remove their copy and show the explosion. |
 | Player and nexus health | Server | `SyncVar<int>` |
 | Death, respawn, match state | Server | Synced state plus RPCs (countdown, respawn time, winner). |
@@ -151,7 +151,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 
 **M0 · Setup.** `git init`, `.gitignore`, Unity project, FishNet and Bayou at pinned versions, Multiplayer Play Mode.
 
-**M1 · End-to-end test with placeholder squares.** This is the riskiest milestone and comes first.
+**M1 · End-to-end test with placeholder squares.** This is the riskiest milestone and comes first. Locally verified: two concurrent isolated matches and server-side rewound hitscan (median rewind error ≈ 0.2 units at 0 ms). Left to verify: browser over WSS on AWS, and tuning the rewind offset under real latency.
 - Two squares move with client-authoritative sync in a browser, over WSS, through Caddy, on EC2 created by Terraform.
 - **Two matches run at once in one process and can't see each other.**
 - **`RollbackManager` plus a raycast in the match's own 2D physics hits a moving target** under 100–150 ms of simulated lag.
@@ -166,7 +166,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - Health, death, 10-second respawn.
 - Nexus health and the win condition.
 
-**M4 · Match flow.** Menu, nickname, Find match queue, waiting screen, countdown, results, disconnect = win, unloading the arena copy.
+**M4 · Match flow.** Menu, nickname, Find match queue, waiting screen, countdown, results, disconnect = win, unloading the arena copy. Also retry the lobby connection automatically: in M1, Bayou sometimes dropped connections when 4 clients connected at the same instant.
 
 **M5 · Validation and HUD.** Server checks for movement and cooldowns, shot-origin check, HUD, opponent arrow, tuning.
 
@@ -181,8 +181,8 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 
 | Risk | What to do |
 |---|---|
-| `RollbackManager` may not work with 2D colliders | Test in M1. Fallback: keep our own 1-second position history per player and raycast against it (about 100 lines). |
-| Bayou + Caddy WebSocket path | Test in M1. Fallback: terminate TLS on a separate port. |
+| ~~`RollbackManager` may not work with 2D colliders~~ | It's stubbed in the free FishNet, so we use the fallback: `PositionHistory` + `LagCompensation` (done in M1). |
+| ~~Bayou + Caddy WebSocket path~~ | Settled: Caddy matches on the `Upgrade` header at `/`. |
 | Browsers throttle hidden tabs; no reconnect | Accept it. Set FishNet's timeout to about 15 seconds. |
 | TCP hiccups cause stutter | ~100 ms smoothing buffer on remote players. |
 | No time limit means defensive play can stall | Tune nexus HP; add a time limit later only if playtests stall. |

@@ -1,0 +1,14 @@
+${domain} {
+	encode zstd gzip
+
+	# Bayou can't use a URL path, so the client connects to wss://${domain}/ .
+	# Route WebSocket upgrades to the game server; everything else is the web build.
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket 127.0.0.1:7770
+
+	root * /srv/web
+	file_server
+}
