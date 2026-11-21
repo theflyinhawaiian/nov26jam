@@ -23,7 +23,7 @@ namespace Jam.Net
             direction.Normalize();
             float best = range;
 
-            RaycastHit2D terrain = match.Physics.Raycast(origin, direction, range, Physics2D.DefaultRaycastLayers);
+            RaycastHit2D terrain = match.Physics.Raycast(origin, direction, range, Layers.GroundMask);
             if (terrain.collider != null)
                 best = terrain.distance;
 

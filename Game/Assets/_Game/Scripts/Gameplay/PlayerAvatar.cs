@@ -10,10 +10,10 @@ using UnityEngine.InputSystem;
 namespace Jam.Gameplay
 {
     /// <summary>
-    /// M1 spike avatar: client-authoritative free movement (NetworkTransform), and a
-    /// hitscan rifle resolved on the server against rewound positions.
+    /// Player avatar: client-authoritative platformer movement (PlatformerMotor + NetworkTransform),
+    /// and a hitscan rifle resolved on the server against rewound positions.
     /// </summary>
-    [RequireComponent(typeof(PositionHistory))]
+    [RequireComponent(typeof(PositionHistory), typeof(PlatformerMotor))]
     public class PlayerAvatar : NetworkBehaviour
     {
         public readonly SyncVar<int> Team = new();
@@ -22,15 +22,13 @@ namespace Jam.Gameplay
 
         [SerializeField] private SpriteRenderer _body;
         [SerializeField] private Vector2 _hitboxSize = new(1f, 1.5f);
-        [SerializeField] private float _moveSpeed = 8f;
         [SerializeField] private float _rifleRange = 24f;
         [SerializeField] private float _rifleCooldown = 0.2f;
 
-        // M1 arena is a 40x22 box centred on the origin; real collision arrives in M2.
-        private static readonly Vector2 ArenaHalfExtents = new(19.5f, 10.5f);
         private static readonly Color[] TeamColors = { new(0.3f, 0.55f, 1f), new(1f, 0.35f, 0.3f) };
 
         public PositionHistory History { get; private set; }
+        public PlatformerMotor Motor { get; private set; }
         public Vector2 HitboxSize => _hitboxSize;
 
         private float _nextFireTime;
@@ -41,6 +39,7 @@ namespace Jam.Gameplay
         private void Awake()
         {
             History = GetComponent<PositionHistory>();
+            Motor = GetComponent<PlatformerMotor>();
             if (_body != null && _body.sprite == null)
                 _body.sprite = Fx.WhiteSprite;
         }
@@ -77,24 +76,37 @@ namespace Jam.Gameplay
         }
 
         /// <summary>Overrides keyboard input when set (smoke-test driver).</summary>
-        public Vector2? ScriptedInput;
+        public MotorInput? ScriptedInput;
 
         private void Move()
         {
-            Vector2 input = ScriptedInput ?? ReadKeyboard();
-            Vector2 p = (Vector2)transform.position + Vector2.ClampMagnitude(input, 1f) * (_moveSpeed * Time.deltaTime);
-            transform.position = Vector2.Max(-ArenaHalfExtents, Vector2.Min(ArenaHalfExtents, p));
+            Motor.Step(ScriptedInput ?? ReadKeyboard(), Time.deltaTime, ArenaPhysics);
         }
 
-        private static Vector2 ReadKeyboard()
+        private static MotorInput ReadKeyboard()
         {
             Keyboard k = Keyboard.current;
             if (k == null)
-                return Vector2.zero;
-            return new Vector2(
-                (k.dKey.isPressed ? 1 : 0) - (k.aKey.isPressed ? 1 : 0),
-                (k.wKey.isPressed ? 1 : 0) - (k.sKey.isPressed ? 1 : 0)).normalized;
+                return default;
+            bool left = k.aKey.isPressed || k.leftArrowKey.isPressed;
+            bool right = k.dKey.isPressed || k.rightArrowKey.isPressed;
+            return new MotorInput
+            {
+                X = (right ? 1f : 0f) - (left ? 1f : 0f),
+                JumpHeld = k.spaceKey.isPressed || k.wKey.isPressed || k.upArrowKey.isPressed,
+                JumpPressed = k.spaceKey.wasPressedThisFrame || k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame,
+                DownHeld = k.sKey.isPressed || k.downArrowKey.isPressed,
+            };
         }
+
+        /// <summary>
+        /// Physics scene of the arena this avatar lives in. On the server that's the avatar's own
+        /// (stacked) scene; a client only ever has one arena loaded.
+        /// </summary>
+        private PhysicsScene2D ArenaPhysics =>
+            gameObject.scene.name == NetConfig.ArenaScene
+                ? gameObject.scene.GetPhysicsScene2D()
+                : UnityEngine.SceneManagement.SceneManager.GetSceneByName(NetConfig.ArenaScene).GetPhysicsScene2D();
 
         #region Rifle
         private void Fire(Mouse mouse)
@@ -118,8 +130,7 @@ namespace Jam.Gameplay
             aim.Normalize();
 
             // Immediate local tracer (terrain only); the server decides what was actually hit.
-            PhysicsScene2D physics = UnityEngine.SceneManagement.SceneManager.GetSceneByName(NetConfig.ArenaScene).GetPhysicsScene2D();
-            RaycastHit2D hit = physics.Raycast(origin, aim, _rifleRange, Physics2D.DefaultRaycastLayers);
+            RaycastHit2D hit = ArenaPhysics.Raycast(origin, aim, _rifleRange, Layers.GroundMask);
             Fx.Tracer(origin, hit.collider != null ? hit.point : origin + aim * _rifleRange, Color.yellow);
 
             // M1 diagnostics: report where we currently see the opponent so the server can

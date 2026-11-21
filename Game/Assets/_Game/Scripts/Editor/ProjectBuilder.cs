@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using FishNet.Component.Observing;
 using FishNet.Component.Transforming;
 using FishNet.Managing;
@@ -20,7 +19,7 @@ using UnityEngine.SceneManagement;
 namespace Jam.EditorTools
 {
     /// <summary>
-    /// Generates the M1 scenes and prefabs from code so they're reproducible and reviewable.
+    /// Generates the scenes and prefabs from code so they're reproducible and reviewable.
     /// Re-running overwrites Boot.unity, Arena.unity, Player.prefab and GamePrefabs.asset.
     /// Batch: Unity -batchmode -quit -executeMethod Jam.EditorTools.ProjectBuilder.RebuildAll
     /// </summary>
@@ -36,16 +35,17 @@ namespace Jam.EditorTools
         private const string GamePrefabsPath = DataDir + "/GamePrefabs.asset";
         private const string SceneConditionPath = "Assets/FishNet/Runtime/Observing/Conditions/ScriptableObjects/SceneCondition.asset";
 
-        [MenuItem("nov26jam/Rebuild M1 Scenes and Prefabs")]
+        [MenuItem("nov26jam/Rebuild Scenes and Prefabs")]
         public static void RebuildAll()
         {
+            SetupLayers();
             EnsureFolder(ScenesDir);
             EnsureFolder(PrefabsDir);
             EnsureFolder(DataDir);
 
             NetworkObject player = BuildPlayerPrefab();
             SinglePrefabObjects prefabs = BuildPrefabCollection(player);
-            BuildArenaScene();
+            ArenaBuilder.Build(ArenaScenePath);
             BuildBootScene(player, prefabs);
 
             EditorBuildSettings.scenes = new[]
@@ -59,7 +59,24 @@ namespace Jam.EditorTools
                 AssetDatabase.DeleteAsset("Assets/Scenes");
 
             AssetDatabase.SaveAssets();
-            Debug.Log("[ProjectBuilder] Rebuilt M1 scenes and prefabs.");
+            Debug.Log("[ProjectBuilder] Rebuilt scenes and prefabs.");
+        }
+
+        [MenuItem("nov26jam/Rebuild Arena Only")]
+        public static void RebuildArena()
+        {
+            SetupLayers();
+            ArenaBuilder.Build(ArenaScenePath);
+        }
+
+        private static void SetupLayers()
+        {
+            SerializedObject tagManager = new(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            SerializedProperty layers = tagManager.FindProperty("layers");
+            layers.GetArrayElementAtIndex(Layers.Ground).stringValue = "Ground";
+            layers.GetArrayElementAtIndex(Layers.OneWay).stringValue = "OneWay";
+            layers.GetArrayElementAtIndex(Layers.JumpPad).stringValue = "JumpPad";
+            tagManager.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static NetworkObject BuildPlayerPrefab()
@@ -76,6 +93,7 @@ namespace Jam.EditorTools
             });
 
             root.AddComponent<PositionHistory>();
+            root.AddComponent<PlatformerMotor>();
             PlayerAvatar avatar = root.AddComponent<PlayerAvatar>();
 
             GameObject body = new("Body");
@@ -107,25 +125,6 @@ namespace Jam.EditorTools
             });
             EditorUtility.SetDirty(collection);
             return collection;
-        }
-
-        private static void BuildArenaScene()
-        {
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-
-            // 40x22 play area (matches PlayerAvatar.ArenaHalfExtents), purely visual.
-            Block("Background", Vector2.zero, new Vector2(40f, 22f), new Color(0.12f, 0.12f, 0.14f), -10, collider: false);
-
-            // Cover to check that terrain blocks hitscan on both client and server.
-            Color wall = new(0.45f, 0.45f, 0.5f);
-            Block("Pillar Center", new Vector2(0f, 0f), new Vector2(1.5f, 8f), wall, 0);
-            Block("Pillar Left", new Vector2(-8f, 5f), new Vector2(1f, 4f), wall, 0);
-            Block("Pillar Right", new Vector2(8f, -5f), new Vector2(1f, 4f), wall, 0);
-
-            SpawnPoint(0, new Vector2(-15f, 0f));
-            SpawnPoint(1, new Vector2(15f, 0f));
-
-            EditorSceneManager.SaveScene(scene, ArenaScenePath);
         }
 
         private static void BuildBootScene(NetworkObject player, PrefabObjects prefabs)
@@ -176,26 +175,6 @@ namespace Jam.EditorTools
             EditorUtility.SetDirty(nm);
 
             EditorSceneManager.SaveScene(scene, BootScenePath);
-        }
-
-        private static void Block(string name, Vector2 center, Vector2 size, Color color, int sortingOrder, bool collider = true)
-        {
-            GameObject go = new(name);
-            go.transform.position = center;
-            go.transform.localScale = new Vector3(size.x, size.y, 1f);
-            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-            sr.color = color;
-            sr.sortingOrder = sortingOrder;
-            go.AddComponent<SolidBlock>();
-            if (collider)
-                go.AddComponent<BoxCollider2D>().size = Vector2.one;
-        }
-
-        private static void SpawnPoint(int team, Vector2 position)
-        {
-            GameObject go = new(team == 0 ? "Spawn Blue" : "Spawn Red");
-            go.transform.position = position;
-            go.AddComponent<SpawnPoint>().Team = team;
         }
 
         private static void SetFields(Object target, System.Action<SerializedObject> edit)

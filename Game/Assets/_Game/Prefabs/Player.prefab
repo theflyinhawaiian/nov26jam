@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 947897344342945034}
   - component: {fileID: 7689445827361749788}
   - component: {fileID: 7118838112963387493}
+  - component: {fileID: 1675674586312478017}
   - component: {fileID: 3562334939760877738}
   m_Layer: 0
   m_Name: Player
@@ -155,6 +156,30 @@ MonoBehaviour:
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 947897344342945034}
   _networkObjectCache: {fileID: 0}
+--- !u!114 &1675674586312478017
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2286418313938356266}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 128714d1e673bc34eb2d16504912a3ec, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Jam.Gameplay.PlatformerMotor
+  _size: {x: 0.9, y: 1.45}
+  _runSpeed: 9
+  _groundAccel: 90
+  _airAccel: 50
+  _gravity: 40
+  _maxFallSpeed: 30
+  _jumpHeight: 5
+  _jumpCutMultiplier: 0.5
+  _coyoteTime: 0.1
+  _jumpBufferTime: 0.12
+  _dropThroughTime: 0.25
+  Velocity: {x: 0, y: 0}
 --- !u!114 &3562334939760877738
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -172,7 +197,6 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 0}
   _body: {fileID: 2844201949561854108}
   _hitboxSize: {x: 1, y: 1.5}
-  _moveSpeed: 8
   _rifleRange: 24
   _rifleCooldown: 0.2
 --- !u!1 &6094728902222128026

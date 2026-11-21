@@ -41,3 +41,9 @@ infra/.terraform.tfstate.lock.info
 Thumbs.db
 .vscode/
 infra/tfplan
+
+# IDE/dotnet restore output inside vendored sources (Unity would try to compile it)
+Game/Assets/**/obj/
+Game/Assets/**/obj.meta
+Game/Assets/**/bin/
+Game/Assets/**/bin.meta
