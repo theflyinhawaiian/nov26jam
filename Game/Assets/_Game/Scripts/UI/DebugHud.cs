@@ -7,8 +7,9 @@ using UnityEngine;
 namespace Jam.UI
 {
     /// <summary>
-    /// M1 throwaway IMGUI: start server/client in the editor, nickname + Find match,
-    /// and the lag-compensation readout. Replaced by real UI in M4.
+    /// Debug IMGUI in the top-left corner: start server/client in the editor, connection and
+    /// build info, in-match stats (until the M5 HUD) and the lag-compensation readout.
+    /// The player-facing match flow is GameMenu.
     /// </summary>
     [RequireComponent(typeof(NetworkManager), typeof(Bootstrap))]
     public class DebugHud : MonoBehaviour
@@ -21,21 +22,16 @@ namespace Jam.UI
 
         private NetworkManager _nm;
         private Bootstrap _bootstrap;
-        private string _nickname = "";
-        private MatchStatus _status = MatchStatus.Idle;
-        private string _statusMessage = "";
         private string _serverVersion = "?";
 
         private void Awake()
         {
             _nm = GetComponent<NetworkManager>();
             _bootstrap = GetComponent<Bootstrap>();
-            _nickname = $"Player{Random.Range(100, 999)}";
         }
 
         private void Start()
         {
-            _nm.ClientManager.RegisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
             _nm.ClientManager.RegisterBroadcast<ServerInfoBroadcast>(OnServerInfo);
             _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
         }
@@ -44,17 +40,8 @@ namespace Jam.UI
         {
             if (_nm == null)
                 return;
-            _nm.ClientManager.UnregisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
             _nm.ClientManager.UnregisterBroadcast<ServerInfoBroadcast>(OnServerInfo);
             _nm.ClientManager.OnClientConnectionState -= OnClientConnectionState;
-        }
-
-        private void OnMatchStatus(MatchStatusBroadcast msg, Channel channel)
-        {
-            _status = msg.Status;
-            _statusMessage = msg.Message;
-            if (msg.Status == MatchStatus.InMatch)
-                FireDiagnostics.Reset();
         }
 
         private void OnServerInfo(ServerInfoBroadcast msg, Channel channel)
@@ -67,11 +54,6 @@ namespace Jam.UI
         {
             if (args.ConnectionState == LocalConnectionState.Started)
                 _nm.ClientManager.Broadcast(new HelloBroadcast());
-            if (args.ConnectionState == LocalConnectionState.Stopped)
-            {
-                _status = MatchStatus.Idle;
-                _statusMessage = "Disconnected.";
-            }
         }
 
         private void Update()
@@ -109,7 +91,7 @@ namespace Jam.UI
             GUILayout.Label($"Build {BuildInfo.Version}  |  server {(client ? _serverVersion : "-")}");
 
 #if !UNITY_WEBGL || UNITY_EDITOR
-            if (!server && !client)
+            if (!server && !client && !_bootstrap.WantsClient)
             {
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button("Host")) _bootstrap.StartHost();
@@ -132,31 +114,8 @@ namespace Jam.UI
         private void DrawLobby()
         {
             GUILayout.Label($"Ping: {_nm.TimeManager.RoundTripTime} ms");
-
-            switch (_status)
-            {
-                case MatchStatus.Idle:
-                case MatchStatus.Ended:
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("Nickname", GUILayout.Width(70));
-                    _nickname = GUILayout.TextField(_nickname, NetConfig.MaxNicknameLength);
-                    GUILayout.EndHorizontal();
-                    if (GUILayout.Button("Find match"))
-                        _nm.ClientManager.Broadcast(new FindMatchBroadcast { Nickname = _nickname });
-                    break;
-                case MatchStatus.Queued:
-                    if (GUILayout.Button("Cancel"))
-                        _nm.ClientManager.Broadcast(new LeaveMatchBroadcast());
-                    break;
-                case MatchStatus.InMatch:
-                    DrawMatch();
-                    if (GUILayout.Button("Leave match"))
-                        _nm.ClientManager.Broadcast(new LeaveMatchBroadcast());
-                    break;
-            }
-
-            if (!string.IsNullOrEmpty(_statusMessage))
-                GUILayout.Label(_statusMessage);
+            if (MatchState.Local != null)
+                DrawMatch();
         }
 
         /// <summary>
@@ -201,7 +160,7 @@ namespace Jam.UI
                 else opp = a;
             }
 
-            MatchState state = FindAnyObjectByType<MatchState>();
+            MatchState state = MatchState.Local;
             if (state != null)
             {
                 string blue = $"Blue nexus {state.BlueNexusHealth.Value}/{MatchState.NexusMaxHealth}";
@@ -228,7 +187,7 @@ namespace Jam.UI
             if (opp != null)
                 GUILayout.Label(opp.IsDead.Value ? $"{opp.Nickname.Value}: DEAD" : $"{opp.Nickname.Value}: {opp.Health.Value}/{PlayerAvatar.MaxHealth} HP");
 
-            GUILayout.Label("A/D move, Space jump, S+Space drop, LMB fire, 1/2/Q weapon, ` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" : ""));
+            GUILayout.Label("` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" : ""));
 
             if (FireDiagnostics.Enabled)
             {

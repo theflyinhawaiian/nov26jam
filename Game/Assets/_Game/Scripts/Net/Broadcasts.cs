@@ -10,6 +10,15 @@ namespace Jam.Net
         Ended,
     }
 
+    public enum MatchOutcome : byte
+    {
+        None,
+        Won,
+        Lost,
+        Left,
+        Cancelled,
+    }
+
     /// <summary>Client → server: put me in the matchmaking queue.</summary>
     public struct FindMatchBroadcast : IBroadcast
     {
@@ -34,5 +43,9 @@ namespace Jam.Net
         public MatchStatus Status;
         public int MatchId;
         public string Message;
+        /// <summary>Set with Status = Ended.</summary>
+        public MatchOutcome Outcome;
+        /// <summary>Set with Status = InMatch.</summary>
+        public string OpponentName;
     }
 }

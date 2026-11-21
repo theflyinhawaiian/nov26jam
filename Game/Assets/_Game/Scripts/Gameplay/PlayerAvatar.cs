@@ -36,6 +36,10 @@ namespace Jam.Gameplay
         /// <summary>Server only: the match this avatar was spawned into.</summary>
         public Match Match { get; set; }
         public Vector2 HitboxSize => _hitboxSize;
+        /// <summary>This avatar's match state (server: via Match; client: the one match it observes).</summary>
+        public MatchState State => Match != null ? Match.State : MatchState.Local;
+        /// <summary>False during the countdown and after the match is decided: no moving or firing.</summary>
+        public bool MatchLive => State != null && State.IsLive;
 
         /// <summary>Overrides keyboard input when set (smoke-test driver).</summary>
         public MotorInput? ScriptedInput;
@@ -103,7 +107,7 @@ namespace Jam.Gameplay
 
         private void Update()
         {
-            if (!IsOwner || IsDead.Value)
+            if (!IsOwner || IsDead.Value || !MatchLive)
                 return;
             Motor.Step(ScriptedInput ?? ReadKeyboard(), Time.deltaTime, ArenaPhysics);
         }

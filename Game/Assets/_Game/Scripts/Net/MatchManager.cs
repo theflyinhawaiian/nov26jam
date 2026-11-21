@@ -27,6 +27,8 @@ namespace Jam.Net
 
         public float RewindOffsetTicks => _rewindOffsetTicks;
 
+        private const float LoadTimeoutSeconds = 20f;
+
         private NetworkManager _nm;
         private readonly List<NetworkConnection> _queue = new();
         private readonly Dictionary<int, Match> _matches = new();
@@ -34,6 +36,7 @@ namespace Jam.Net
         private readonly Dictionary<NetworkConnection, string> _nicknames = new();
         private int _nextMatchId;
         private readonly List<(Match match, int winner)> _pendingEnds = new();
+        private readonly List<Match> _timedOut = new();
 
         private void Awake()
         {
@@ -48,6 +51,7 @@ namespace Jam.Net
             _nm.ServerManager.OnRemoteConnectionState += OnRemoteConnectionState;
             _nm.SceneManager.OnLoadEnd += OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd += OnClientPresenceChangeEnd;
+            _nm.SceneManager.OnUnloadEnd += OnUnloadEnd;
         }
 
         private void OnDestroy()
@@ -60,15 +64,22 @@ namespace Jam.Net
             _nm.ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             _nm.SceneManager.OnLoadEnd -= OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd -= OnClientPresenceChangeEnd;
+            _nm.SceneManager.OnUnloadEnd -= OnUnloadEnd;
         }
 
         private void Update()
         {
-            if (_pendingEnds.Count == 0)
-                return;
             foreach ((Match m, int winner) in _pendingEnds)
                 EndMatch(m, winner, "nexus destroyed");
             _pendingEnds.Clear();
+
+            // A player whose client never finishes loading the arena would otherwise strand the other one.
+            _timedOut.Clear();
+            foreach (Match m in _matches.Values)
+                if (!m.Ended && !m.AllPlayersSpawned && Time.unscaledTime - m.CreatedAt > LoadTimeoutSeconds)
+                    _timedOut.Add(m);
+            foreach (Match m in _timedOut)
+                EndMatch(m, -1, "a player failed to load the arena");
         }
 
         public bool TryGetMatch(Scene scene, out Match match)
@@ -150,7 +161,7 @@ namespace Jam.Net
             _nm.SceneManager.LoadConnectionScenes(players, sld);
 
             foreach (NetworkConnection p in players)
-                Send(p, MatchStatus.InMatch, m.Id, "Match found!");
+                Send(p, MatchStatus.InMatch, m.Id, "Match found!", opponentName: GetNickname(m.Opponent(p)));
             Debug.Log($"[MatchManager] Created match {m.Id} for {string.Join(", ", System.Array.ConvertAll(players, p => GetNickname(p)))}");
             return m;
         }
@@ -202,6 +213,11 @@ namespace Jam.Net
             _nm.ServerManager.Spawn(nob, conn, m.Scene);
             m.Avatars.Add(avatar);
             Debug.Log($"[MatchManager] Spawned avatar {nob.ObjectId} for client {conn.ClientId} in match {m.Id}");
+            if (m.AllPlayersSpawned && m.State != null)
+            {
+                m.State.BeginCountdown();
+                Debug.Log($"[MatchManager] Match {m.Id}: both players in, countdown started");
+            }
         }
 
         private void OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
@@ -216,14 +232,15 @@ namespace Jam.Net
 
         /// <summary>
         /// Ends a match: each remaining player is told whether they won and why, then sent back
-        /// to the lobby. <paramref name="leaver"/> (if any) just gets "You left the match."
+        /// to the lobby. <paramref name="winningTeam"/> -1 cancels the match with no winner.
+        /// <paramref name="leaver"/> (if any) just gets "You left the match."
         /// </summary>
         private void EndMatch(Match m, int winningTeam, string reason, NetworkConnection leaver = null)
         {
             if (m.Ended)
                 return;
             m.Ended = true;
-            if (m.State != null && m.State.Winner.Value < 0)
+            if (m.State != null && m.State.Winner.Value < 0 && winningTeam >= 0)
                 m.State.Winner.Value = winningTeam;
 
             foreach (PlayerAvatar a in m.Avatars)
@@ -238,21 +255,44 @@ namespace Jam.Net
                     continue;
                 if (m.SceneLoaded)
                     _nm.SceneManager.UnloadConnectionScenes(p, new SceneUnloadData(m.Scene));
-                string message = p == leaver ? "You left the match."
-                    : m.TeamOf(p) == winningTeam ? $"You win: {reason}!"
-                    : $"You lose: {reason}.";
-                Send(p, MatchStatus.Ended, m.Id, message);
+
+                MatchOutcome outcome;
+                string message;
+                if (p == leaver)
+                    (outcome, message) = (MatchOutcome.Left, "You left the match.");
+                else if (winningTeam < 0)
+                    (outcome, message) = (MatchOutcome.Cancelled, $"Match cancelled: {reason}.");
+                else if (m.TeamOf(p) == winningTeam)
+                    (outcome, message) = (MatchOutcome.Won, $"You win: {reason}!");
+                else
+                    (outcome, message) = (MatchOutcome.Lost, $"You lose: {reason}.");
+                Send(p, MatchStatus.Ended, m.Id, message, outcome);
             }
             if (m.State != null && m.State.IsSpawned)
                 _nm.ServerManager.Despawn(m.State.NetworkObject);
             _matches.Remove(m.Id);
-            Debug.Log($"[MatchManager] Ended match {m.Id}: team {winningTeam} won ({reason})");
+            Debug.Log($"[MatchManager] Ended match {m.Id}: {(winningTeam < 0 ? "cancelled" : $"team {winningTeam} won")} ({reason}). {_matches.Count} match(es) running.");
+        }
+
+        private void OnUnloadEnd(SceneUnloadEndEventArgs args)
+        {
+            if (!args.QueueData.AsServer)
+                return;
+            Debug.Log($"[MatchManager] Unloaded {args.UnloadedScenesV2.Count} scene(s); {UnityEngine.SceneManagement.SceneManager.sceneCount} scene(s) now loaded on the server.");
         }
         #endregion
 
-        private void Send(NetworkConnection conn, MatchStatus status, int matchId, string message)
+        private void Send(NetworkConnection conn, MatchStatus status, int matchId, string message,
+            MatchOutcome outcome = MatchOutcome.None, string opponentName = null)
         {
-            _nm.ServerManager.Broadcast(conn, new MatchStatusBroadcast { Status = status, MatchId = matchId, Message = message });
+            _nm.ServerManager.Broadcast(conn, new MatchStatusBroadcast
+            {
+                Status = status,
+                MatchId = matchId,
+                Message = message,
+                Outcome = outcome,
+                OpponentName = opponentName ?? string.Empty,
+            });
         }
     }
 }

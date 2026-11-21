@@ -32,7 +32,7 @@ namespace Jam.Gameplay
             if (_state == null)
             {
                 // A client only ever has its own match's state.
-                _state = FindAnyObjectByType<MatchState>();
+                _state = MatchState.Local;
                 if (_state == null)
                     return;
             }

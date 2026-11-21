@@ -14,6 +14,7 @@ namespace Jam.Net
     /// - passive: stand at spawn.
     /// - selfnade: run back and forth near spawn throwing grenades forward, at the floor ahead,
     ///   and straight down (regression check for self-damage while moving).
+    /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
     /// Logs progress, then quits with "SMOKE RESULT" in the log.
     /// </summary>
     public class SmokeTestDriver : MonoBehaviour
@@ -38,6 +39,15 @@ namespace Jam.Net
         private bool _wasDead;
         private int _minHealth = int.MaxValue;
         private int _grenadesThrown;
+        private bool _requeue;
+        private int _matches;
+        private int _ends;
+        private float _requeueAt = -1f;
+        private float _matchFoundAt;
+        private bool _sawLive;
+        private string _countdowns = "";
+        private bool _movedBeforeLive;
+        private Vector2? _preLivePos;
 
         public static bool Requested => Array.IndexOf(Environment.GetCommandLineArgs(), "-smoketest") >= 0;
 
@@ -46,6 +56,7 @@ namespace Jam.Net
             _nm = GetComponent<NetworkManager>();
             _duration = float.TryParse(GetArg("-smokeduration"), out float d) ? d : _duration;
             _mode = GetArg("-smokemode") ?? _mode;
+            _requeue = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokerequeue") >= 0;
 
             _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
             _nm.ClientManager.RegisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
@@ -56,20 +67,48 @@ namespace Jam.Net
         {
             Debug.Log($"[Smoke] Client {args.ConnectionState}");
             if (args.ConnectionState == LocalConnectionState.Started)
-                _nm.ClientManager.Broadcast(new FindMatchBroadcast { Nickname = $"{_mode}{System.Diagnostics.Process.GetCurrentProcess().Id}" });
+                Queue();
         }
+
+        private void Queue() =>
+            _nm.ClientManager.Broadcast(new FindMatchBroadcast { Nickname = $"{_mode}{System.Diagnostics.Process.GetCurrentProcess().Id}" });
 
         private void OnMatchStatus(MatchStatusBroadcast msg, Channel channel)
         {
             Debug.Log($"[Smoke] Status {msg.Status} match={msg.MatchId}: {msg.Message}");
             if (msg.Status == MatchStatus.InMatch)
+            {
                 _matched = true;
+                _matches++;
+                _matchFoundAt = Time.time;
+                _sawLive = false;
+                _preLivePos = null;
+            }
             if (msg.Status == MatchStatus.Ended)
+            {
+                _ends++;
                 _endMessage = msg.Message;
+                if (_requeue)
+                    _requeueAt = Time.time + 1f;
+            }
         }
 
         private void Update()
         {
+            if (_requeueAt >= 0f && Time.time >= _requeueAt)
+            {
+                _requeueAt = -1f;
+                Queue();
+            }
+
+            MatchState local = MatchState.Local;
+            if (local != null && !_sawLive && local.IsLive)
+            {
+                _sawLive = true;
+                _countdowns += $"{Time.time - _matchFoundAt:0.0}s ";
+                Debug.Log($"[Smoke] Match live {Time.time - _matchFoundAt:0.0}s after match found");
+            }
+
             PlayerAvatar[] avatars = FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None);
             if (avatars.Length > _maxAvatarsSeen)
             {
@@ -85,7 +124,7 @@ namespace Jam.Net
             if (Time.time >= _nextLog)
             {
                 _nextLog = Time.time + 3f;
-                MatchState state = FindAnyObjectByType<MatchState>();
+                MatchState state = MatchState.Local;
                 string nexus = state != null ? $"nexus={state.BlueNexusHealth.Value}/{state.RedNexusHealth.Value}" : "nexus=?";
                 Debug.Log($"[Smoke] avatars={avatars.Length} ping={_nm.TimeManager.RoundTripTime}ms pos={_lastOwnPos} deaths={_deaths} {nexus} " +
                           $"rifleShots={FireDiagnostics.Shots} rifleHits={FireDiagnostics.Hits} medianErr={FireDiagnostics.MedianError:0.000}");
@@ -95,7 +134,8 @@ namespace Jam.Net
             {
                 Debug.Log($"SMOKE RESULT mode={_mode} matched={_matched} maxAvatarsSeen={_maxAvatarsSeen} minOwnY={_minOwnY:0.00} maxOwnY={_maxOwnY:0.00} " +
                           $"deaths={_deaths} respawns={_respawns} rifleShots={FireDiagnostics.Shots} rifleHits={FireDiagnostics.Hits} " +
-                          $"medianErr={FireDiagnostics.MedianError:0.000} minHealth={_minHealth} grenades={_grenadesThrown} end=\"{_endMessage}\"");
+                          $"medianErr={FireDiagnostics.MedianError:0.000} minHealth={_minHealth} grenades={_grenadesThrown} " +
+                          $"matches={_matches} ends={_ends} liveAfter=[{_countdowns.Trim()}] movedBeforeLive={_movedBeforeLive} end=\"{_endMessage}\"");
                 Application.Quit(_matched ? 0 : 1);
                 enabled = false;
             }
@@ -115,6 +155,12 @@ namespace Jam.Net
             if (a.IsSpawned)
                 _minHealth = Mathf.Min(_minHealth, a.Health.Value);
             Vector2 pos = a.transform.position;
+            if (!a.MatchLive && (a.State == null || a.State.Winner.Value < 0))
+            {
+                _preLivePos ??= pos;
+                if (Vector2.Distance(_preLivePos.Value, pos) > 0.05f)
+                    _movedBeforeLive = true;
+            }
             _minOwnY = Mathf.Min(_minOwnY, pos.y);
             _maxOwnY = Mathf.Max(_maxOwnY, pos.y);
             _lastOwnPos = pos;

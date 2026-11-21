@@ -80,7 +80,7 @@ namespace Jam.Gameplay
 
             Mouse mouse = Mouse.current;
             Camera cam = Camera.main;
-            if (mouse != null && cam != null && mouse.leftButton.isPressed && !DebugHud.PointerOverHud)
+            if (mouse != null && cam != null && mouse.leftButton.isPressed && !DebugHud.PointerOverHud && !GameMenu.CapturesPointer)
                 FireAt(cam.ScreenToWorldPoint(mouse.position.ReadValue()));
         }
 
@@ -93,7 +93,7 @@ namespace Jam.Gameplay
         /// <summary>Owner only. Public so the smoke-test driver can shoot without input devices.</summary>
         public void FireAt(Vector2 worldPoint)
         {
-            if (!IsOwner || _avatar.IsDead.Value)
+            if (!IsOwner || _avatar.IsDead.Value || !_avatar.MatchLive)
                 return;
             int index = CurrentIndex;
             WeaponDefinition w = _weapons[index];
@@ -119,7 +119,7 @@ namespace Jam.Gameplay
         {
             weapon = null;
             match = _avatar.Match;
-            if (match == null || match.Ended || _avatar.IsDead.Value || index >= _weapons.Length)
+            if (match == null || match.Ended || match.State == null || !match.State.IsLive || _avatar.IsDead.Value || index >= _weapons.Length)
                 return false;
             weapon = _weapons[index];
             if (weapon.Kind != kind)

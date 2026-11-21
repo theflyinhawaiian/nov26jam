@@ -20,6 +20,8 @@ namespace Jam.Net
         public Scene Scene;
         public MatchState State;
         public bool Ended;
+        /// <summary>Time.unscaledTime when CreateMatch ran; used for the load timeout.</summary>
+        public readonly float CreatedAt = Time.unscaledTime;
 
         private readonly Vector2[] _spawns = new Vector2[2];
         private readonly Nexus[] _nexuses = new Nexus[2];
@@ -33,6 +35,8 @@ namespace Jam.Net
         public bool SceneLoaded => Scene.IsValid() && Scene.isLoaded;
         public PhysicsScene2D Physics => Scene.GetPhysicsScene2D();
         public int TeamOf(NetworkConnection conn) => Array.IndexOf(Players, conn);
+        public NetworkConnection Opponent(NetworkConnection conn) => Players[1 - TeamOf(conn)];
+        public bool AllPlayersSpawned => Avatars.Count == Players.Length;
         public Vector2 SpawnPosition(int team) => _spawns[Mathf.Clamp(team, 0, 1)];
         public IReadOnlyList<Nexus> Nexuses => _nexuses;
 

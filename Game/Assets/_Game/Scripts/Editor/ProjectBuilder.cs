@@ -235,6 +235,7 @@ namespace Jam.EditorTools
                 so.FindProperty("_matchStatePrefab").objectReferenceValue = matchState;
             });
             nmGo.AddComponent<DebugHud>();
+            nmGo.AddComponent<GameMenu>();
 
             // Assign last: NetworkManager's editor Reset/OnValidate auto-assigns DefaultPrefabObjects
             // while other components are being added.

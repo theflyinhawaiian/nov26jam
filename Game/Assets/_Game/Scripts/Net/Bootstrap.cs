@@ -1,7 +1,9 @@
 using System;
 using FishNet.Managing;
+using FishNet.Transporting;
 using FishNet.Transporting.Bayou;
 using UnityEngine;
+using UnitySceneManager = UnityEngine.SceneManagement.SceneManager;
 
 namespace Jam.Net
 {
@@ -11,17 +13,81 @@ namespace Jam.Net
     /// - Web build: connect back to the host that served the page (wss://host/ via Caddy).
     ///   Append ?server=host:port to the page URL to target a plain ws:// server instead.
     /// - Editor/desktop: idle until DebugHud buttons (or -server / -client args) start something.
+    /// Once a client has been started it keeps reconnecting (with backoff and jitter) whenever
+    /// the connection fails or drops.
     /// </summary>
     [RequireComponent(typeof(NetworkManager), typeof(Bayou))]
     public class Bootstrap : MonoBehaviour
     {
+        private const float MaxRetryDelay = 8f;
+
         private NetworkManager _nm;
         private Bayou _bayou;
+        private bool _wantClient;
+        private float _retryAt = -1f;
+        private bool _quitting;
+
+        /// <summary>Failed connection attempts since the last successful connect.</summary>
+        public int FailedAttempts { get; private set; }
+        /// <summary>Seconds until the next reconnect attempt, or -1 if none is scheduled.</summary>
+        public float RetryIn => _retryAt < 0f ? -1f : Mathf.Max(0f, _retryAt - Time.unscaledTime);
+        /// <summary>True once a client has been started (and will be kept connected).</summary>
+        public bool WantsClient => _wantClient;
 
         private void Awake()
         {
             _nm = GetComponent<NetworkManager>();
             _bayou = GetComponent<Bayou>();
+            _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
+            Application.quitting += () => _quitting = true;
+        }
+
+        private void OnDestroy()
+        {
+            if (_nm != null)
+                _nm.ClientManager.OnClientConnectionState -= OnClientConnectionState;
+        }
+
+        private void Update()
+        {
+            if (_retryAt >= 0f && Time.unscaledTime >= _retryAt)
+            {
+                _retryAt = -1f;
+                if (_wantClient && !_nm.IsClientStarted)
+                    _nm.ClientManager.StartConnection();
+            }
+        }
+
+        private void OnClientConnectionState(ClientConnectionStateArgs args)
+        {
+            if (args.ConnectionState == LocalConnectionState.Started)
+            {
+                FailedAttempts = 0;
+                return;
+            }
+            if (args.ConnectionState != LocalConnectionState.Stopped)
+                return;
+
+            if (!_nm.IsServerStarted)
+                UnloadArenaScenes();
+            if (!_wantClient || _quitting)
+                return;
+            FailedAttempts++;
+            // 1, 2, 4, 8, 8... seconds, plus jitter so a crowd of clients doesn't reconnect in lockstep.
+            float delay = Mathf.Min(MaxRetryDelay, Mathf.Pow(2f, FailedAttempts - 1)) + UnityEngine.Random.Range(0f, 0.5f);
+            _retryAt = Time.unscaledTime + delay;
+            Debug.Log($"[Bootstrap] Client connection stopped; retrying in {delay:0.0}s (attempt {FailedAttempts + 1}).");
+        }
+
+        /// <summary>A pure client that loses the server keeps whatever arena it had loaded; drop it.</summary>
+        private static void UnloadArenaScenes()
+        {
+            for (int i = UnitySceneManager.sceneCount - 1; i >= 0; i--)
+            {
+                var scene = UnitySceneManager.GetSceneAt(i);
+                if (scene.name == NetConfig.ArenaScene && scene.isLoaded)
+                    UnitySceneManager.UnloadSceneAsync(scene);
+            }
         }
 
         private void Start()
@@ -30,7 +96,7 @@ namespace Jam.Net
             StartServer();
 #elif UNITY_WEBGL && !UNITY_EDITOR
             ConfigureClientFromPageUrl();
-            _nm.ClientManager.StartConnection();
+            StartClient();
 #else
             // -connect host  →  wss://host:443 (e.g. smoke-testing production from a desktop build)
             string remote = GetArg("-connect");
@@ -62,7 +128,19 @@ namespace Jam.Net
             _nm.ServerManager.StartConnection();
         }
 
-        public void StartClient() => _nm.ClientManager.StartConnection();
+        public void StartClient()
+        {
+            _wantClient = true;
+            _retryAt = -1f;
+            _nm.ClientManager.StartConnection();
+        }
+
+        /// <summary>Reconnect now instead of waiting for the backoff.</summary>
+        public void RetryNow()
+        {
+            if (_wantClient && !_nm.IsClientStarted)
+                StartClient();
+        }
 
         public void StartHost()
         {
