@@ -44,8 +44,8 @@ namespace Jam.Net
         private float _waveSeconds = LaneDirector.DefaultWaveSeconds;
         /// <summary>Arena every match is played in. -arena TwoLane|Arena on the server (scene name).</summary>
         private ArenaDef _arena = Arenas.TwoLane;
-        /// <summary>Money each player starts a match with; 0 unless -startmoney N (for testing the shop).</summary>
-        private int _startMoney;
+        /// <summary>Money each player starts a match with; -startmoney N overrides (e.g. for testing the shop).</summary>
+        private int _startMoney = Shop.StartingMoney;
 
         private void Awake()
         {
@@ -70,10 +70,10 @@ namespace Jam.Net
             }
             Debug.Log($"[MatchManager] Arena: {_arena.Scene}");
             i = System.Array.IndexOf(args, "-startmoney");
-            if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int money) && money > 0)
+            if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int money) && money >= 0)
             {
                 _startMoney = money;
-                Debug.Log($"[MatchManager] Players start with ${money} (testing)");
+                Debug.Log($"[MatchManager] Players start with ${money}");
             }
             i = System.Array.IndexOf(args, "-waveseconds");
             if (i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,

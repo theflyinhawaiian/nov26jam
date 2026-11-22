@@ -25,7 +25,8 @@ namespace Jam.Net
     ///   hatch at x = 20 (they should burst on it, at y = 36).
     /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
     ///   that the server's movement validation corrects it (corrections= in the result).
-    /// -smokegun rifle|blaster: the gun the bot picks at the start of each match (default rifle).
+    /// -smokegun rifle|blaster|none: the gun the bot picks at the start of each match (default rifle;
+    ///   none leaves it to the server's random pick when the countdown ends).
     /// -smokename name: queue with this nickname (e.g. the dev nickname "peet").
     /// -smokeshop: open the shop whenever we're in our spawn zone (with -smokeshot, to see it).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
@@ -84,7 +85,9 @@ namespace Jam.Net
             _nm = GetComponent<NetworkManager>();
             _duration = float.TryParse(GetArg("-smokeduration"), out float d) ? d : _duration;
             _mode = GetArg("-smokemode") ?? _mode;
-            _gun = string.Equals(GetArg("-smokegun"), "blaster", StringComparison.OrdinalIgnoreCase) ? PlayerWeapons.GunChoices[1] : PlayerWeapons.GunChoices[0];
+            string gunArg = GetArg("-smokegun") ?? "rifle";
+            _gun = gunArg.Equals("blaster", StringComparison.OrdinalIgnoreCase) ? PlayerWeapons.GunChoices[1]
+                : gunArg.Equals("none", StringComparison.OrdinalIgnoreCase) ? -1 : PlayerWeapons.GunChoices[0];
             GameMenu.SmokeOpenShop = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokeshop") >= 0;
             if (Enum.TryParse(GetArg("-smokeability") ?? "", true, out AbilityId want))
                 _wantAbility = want;
@@ -162,10 +165,10 @@ namespace Jam.Net
             {
                 if (!a.IsOwner)
                     continue;
-                // Pick a few seconds in, so -smokeshot frames show the choice prompt first.
+                // Pick a second in (before the countdown ends, so -smokegun isn't replaced by a random pick).
                 if (_gunPromptSeenAt < 0f)
                     _gunPromptSeenAt = Time.time;
-                if (!a.Weapons.HasGun && Time.time >= _nextGunPick && Time.time - _gunPromptSeenAt > 6f)
+                if (_gun >= 0 && !a.Weapons.HasGun && Time.time >= _nextGunPick && Time.time - _gunPromptSeenAt > 1f)
                 {
                     _nextGunPick = Time.time + 1f;
                     a.Weapons.ServerChooseGun(_gun);
@@ -186,7 +189,7 @@ namespace Jam.Net
                     }
                 }
                 _money = a.Money.Value;
-                _upgrades = $"gun={(a.Weapons.HasGun ? a.Weapons.Get(a.Weapons.Gun.Value).DisplayName : "none")} vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} q={a.Abilities.Current.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
+                _upgrades = $"gun={(a.Weapons.HasGun ? a.Weapons.Get(a.Weapons.Gun.Value).DisplayName : "none")} vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} armor={a.Armor.Value} q={a.Abilities.Current.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
                             $"{(a.Slowed ? " SLOWED" : "")}{(a.Silenced ? " SILENCED" : "")}{(a.Stunned ? " STUNNED" : "")}";
             }
 
@@ -427,8 +430,11 @@ namespace Jam.Net
                     // Walk the mid lane to within rifle range (x = ±6) and hop regularly, so the
                     // opponent's history has vertical motion to rewind against.
                     float holdX = 6f * Mathf.Sign(pos.x == 0f ? 1f : pos.x);
-                    bool jump = Mathf.Repeat(t, 1.5f) < Time.deltaTime * 1.5f;
-                    a.ScriptedInput = new MotorInput { X = Mathf.Clamp(holdX - pos.x, -1f, 1f), JumpPressed = jump, JumpHeld = jump };
+                    float moveX = Mathf.Clamp(holdX - pos.x, -1f, 1f);
+                    // Hop regularly, and over our own nexus on the way out of spawn.
+                    bool jump = Mathf.Repeat(t, 1.5f) < Time.deltaTime * 1.5f
+                                || (Mathf.Abs(moveX) > 0.5f && HopAhead(arena, pos, Mathf.Sign(moveX)) && a.Motor.Grounded);
+                    a.ScriptedInput = new MotorInput { X = moveX, JumpPressed = jump, JumpHeld = jump || Mathf.Abs(moveX) > 0.5f };
 
                     PlayerAvatar opponent = a.Weapons.FindOpponent();
                     if (opponent == null || opponent.IsDead.Value)

@@ -30,6 +30,8 @@ namespace Jam.Gameplay
         /// <summary>Shop upgrade levels bought this match.</summary>
         public readonly SyncVar<int> VitalityLevel = new();
         public readonly SyncVar<int> FirepowerLevel = new();
+        /// <summary>Temporary health from the shop's Armor: takes damage before Health.</summary>
+        public readonly SyncVar<int> Armor = new();
         /// <summary>Status effects: active until these server ticks (see <see cref="StatusEffect"/>).</summary>
         public readonly SyncVar<uint> SlowUntilTick = new();
         public readonly SyncVar<uint> SilenceUntilTick = new();
@@ -108,7 +110,13 @@ namespace Jam.Gameplay
         public const string DevNickname = "peet";
         public bool DevMovement => string.Equals(Nickname.Value?.Trim(), DevNickname, System.StringComparison.OrdinalIgnoreCase);
 
-        public int Level(ShopItemId id) => id == ShopItemId.Vitality ? VitalityLevel.Value : FirepowerLevel.Value;
+        /// <summary>Upgrade level bought; for Armor, the points left.</summary>
+        public int Level(ShopItemId id) => id switch
+        {
+            ShopItemId.Vitality => VitalityLevel.Value,
+            ShopItemId.Firepower => FirepowerLevel.Value,
+            _ => Armor.Value,
+        };
 
         public Rect HitboxAt(Vector2 center) => new(center - _hitboxSize * 0.5f, _hitboxSize);
 
@@ -220,11 +228,18 @@ namespace Jam.Gameplay
                 return;
             if (source.Player != null && source.Player != this && source.Team != Team.Value)
                 source.Player.LastHitEnemyPlayerAt = Time.time;
+            if (Armor.Value > 0)
+            {
+                int soaked = Mathf.Min(Armor.Value, amount);
+                Armor.Value -= soaked;
+                amount -= soaked;
+            }
             Health.Value = Mathf.Max(0, Health.Value - amount);
             ObserversDamageFlash();
             if (Health.Value == 0)
             {
                 IsDead.Value = true;
+                Armor.Value = 0;
                 Deaths.Value++;
                 RespawnTick.Value = TimeManager.Tick + TimeManager.TimeToTicks(RespawnSeconds);
             }
@@ -234,6 +249,9 @@ namespace Jam.Gameplay
         {
             if (IsDead.Value && TimeManager.Tick >= RespawnTick.Value)
                 Respawn();
+            // Anyone who didn't pick a gun during the countdown gets one at random.
+            if (MatchLive && Weapons != null && !Weapons.HasGun)
+                Weapons.AssignRandomGun();
         }
 
         [Server]
@@ -273,6 +291,9 @@ namespace Jam.Gameplay
                     break;
                 case ShopItemId.Firepower:
                     FirepowerLevel.Value++;
+                    break;
+                case ShopItemId.Armor:
+                    Armor.Value = Shop.ArmorPoints;
                     break;
             }
         }

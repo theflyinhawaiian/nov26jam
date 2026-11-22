@@ -145,7 +145,10 @@ namespace Jam.UI
             float fill = me.IsDead.Value ? 0f : (float)me.Health.Value / me.MaxHp;
             Color color = Color.Lerp(new Color(0.95f, 0.3f, 0.25f), new Color(0.35f, 0.85f, 0.4f), Mathf.InverseLerp(0.2f, 0.7f, fill));
             Bar(bar, fill, color, fromRight: false);
-            GUI.Label(bar, me.IsDead.Value ? "DEAD" : $"{me.Health.Value} / {me.MaxHp}", _barText);
+            int armor = me.IsDead.Value ? 0 : me.Armor.Value;
+            if (armor > 0)
+                Fill(new Rect(bar.x, bar.y - 5f, bar.width * Mathf.Clamp01((float)armor / Shop.ArmorPoints), 4f), new Color(0.75f, 0.85f, 1f));
+            GUI.Label(bar, me.IsDead.Value ? "DEAD" : armor > 0 ? $"{me.Health.Value} / {me.MaxHp}  +{armor}" : $"{me.Health.Value} / {me.MaxHp}", _barText);
             _name.alignment = TextAnchor.LowerLeft;
             Shadowed(new Rect(bar.x, bar.y - 24f, bar.width, 22f), "HEALTH", _name);
             _name.alignment = TextAnchor.LowerRight;

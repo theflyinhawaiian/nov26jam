@@ -126,6 +126,16 @@ namespace Jam.Gameplay
             Debug.Log($"[Weapons] {_avatar.Nickname.Value} chose {_weapons[index].DisplayName}");
         }
 
+        /// <summary>Server only: pick a gun at random (the countdown ended without a choice).</summary>
+        [Server]
+        public void AssignRandomGun()
+        {
+            if (HasGun)
+                return;
+            Gun.Value = GunChoices[Random.Range(0, GunChoices.Length)];
+            Debug.Log($"[Weapons] {_avatar.Nickname.Value} didn't choose; got {_weapons[Gun.Value].DisplayName} at random");
+        }
+
         /// <summary>Owner only: fire the chosen gun. Public so the smoke-test driver can shoot without input devices.</summary>
         public void FireAt(Vector2 worldPoint)
         {

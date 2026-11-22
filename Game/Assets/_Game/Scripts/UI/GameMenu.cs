@@ -315,10 +315,10 @@ namespace Jam.UI
             {
                 int level = me.Level(item.Id);
                 bool maxed = level >= item.MaxLevel;
-                GUILayout.Label($"{item.Name}  ({level}/{item.MaxLevel})", _label);
+                GUILayout.Label(item.Consumable ? $"{item.Name}  ({level}/{item.MaxLevel} left)" : $"{item.Name}  ({level}/{item.MaxLevel})", _label);
                 GUILayout.Label(item.Description, _small);
                 GUI.enabled = !maxed && me.Money.Value >= item.Cost;
-                if (GUILayout.Button(maxed ? "Maxed" : $"Buy  ${item.Cost}", _button))
+                if (GUILayout.Button(maxed ? (item.Consumable ? "Full" : "Maxed") : $"Buy  ${item.Cost}", _button))
                     me.ServerBuy(item.Id);
                 GUI.enabled = true;
                 GUILayout.Space(8);
@@ -362,6 +362,7 @@ namespace Jam.UI
             if (me == null)
                 return;
             GUILayout.Label("Choose your weapon for this match", _heading);
+            GUILayout.Label("Picked at random if you haven't chosen when the countdown ends.", _small);
             GUILayout.Space(10);
             GUILayout.BeginHorizontal();
             for (int i = 0; i < PlayerWeapons.GunChoices.Length; i++)
