@@ -119,8 +119,20 @@ namespace Jam.UI
                 _shopOpen = true;
             if (!inMatch)
                 _leaveMenuOpen = false;
-            CapturesPointer = !inMatch || _leaveMenuOpen || _shopOpen;
+            bool choosing = NeedsGunChoice(me) && inMatch;
+            if (choosing && !_leaveMenuOpen && k != null)
+            {
+                if (k.digit1Key.wasPressedThisFrame)
+                    me.Weapons.ServerChooseGun(PlayerWeapons.GunChoices[0]);
+                else if (k.digit2Key.wasPressedThisFrame)
+                    me.Weapons.ServerChooseGun(PlayerWeapons.GunChoices[1]);
+            }
+            CapturesPointer = !inMatch || _leaveMenuOpen || _shopOpen || choosing;
         }
+
+        /// <summary>The local player is in a match but hasn't picked their gun yet.</summary>
+        private static bool NeedsGunChoice(PlayerAvatar me) =>
+            me != null && me.IsSpawned && me.Weapons != null && !me.Weapons.HasGun;
 
         private void LateUpdate()
         {
@@ -174,6 +186,8 @@ namespace Jam.UI
                     DrawCountdown(screen);
                     if (_leaveMenuOpen)
                         Panel(screen, DrawLeaveMenu);
+                    else if (NeedsGunChoice(PlayerAvatar.LocalPlayer))
+                        Panel(screen, DrawGunChoice, ShopWidth, _solidPanel, top: 0.42f);
                     else if (_shopOpen)
                     {
                         _blur.Draw();
@@ -341,6 +355,32 @@ namespace Jam.UI
                 _shopOpen = false;
         }
 
+        /// <summary>Start-of-match pick between the two guns (below the countdown).</summary>
+        private void DrawGunChoice()
+        {
+            PlayerAvatar me = PlayerAvatar.LocalPlayer;
+            if (me == null)
+                return;
+            GUILayout.Label("Choose your weapon for this match", _heading);
+            GUILayout.Space(10);
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < PlayerWeapons.GunChoices.Length; i++)
+            {
+                int slot = PlayerWeapons.GunChoices[i];
+                WeaponDefinition w = me.Weapons.Get(slot);
+                GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 90f) * 0.5f));
+                GUILayout.Label(w.DisplayName, _label);
+                GUILayout.Label($"{w.Damage} damage  ·  {w.Damage / w.Cooldown:0} per second  ·  range {w.Range:0}", _small);
+                GUILayout.Label(w.Range < 11f ? "Short range: step into tower range to hit towers." : "Long range: hits towers from outside their range.", _small);
+                if (GUILayout.Button($"{i + 1}  {w.DisplayName}", _button))
+                    me.Weapons.ServerChooseGun(slot);
+                GUILayout.EndVertical();
+                if (i == 0)
+                    GUILayout.Space(20);
+            }
+            GUILayout.EndHorizontal();
+        }
+
         private void DrawLeaveMenu()
         {
             GUILayout.Label("Leave the match?", _heading);
@@ -392,11 +432,12 @@ namespace Jam.UI
         #endregion
 
         #region Layout
-        private void Panel(Vector2 screen, System.Action draw, float width = PanelWidth, GUIStyle style = null)
+        private void Panel(Vector2 screen, System.Action draw, float width = PanelWidth, GUIStyle style = null, float top = -1f)
         {
             // Height is measured on the Layout pass; centre vertically using a generous estimate.
             // The wide shop panel is also the tallest: start it higher.
-            float top = width > PanelWidth ? 0.07f : 0.18f;
+            if (top < 0f)
+                top = width > PanelWidth ? 0.07f : 0.18f;
             Rect area = new((screen.x - width) * 0.5f, screen.y * top, width, screen.y * (0.95f - top));
             GUILayout.BeginArea(area);
             GUILayout.BeginVertical(style ?? _panel);

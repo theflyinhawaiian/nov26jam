@@ -25,6 +25,7 @@ namespace Jam.Net
     ///   hatch at x = 20 (they should burst on it, at y = 36).
     /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
     ///   that the server's movement validation corrects it (corrections= in the result).
+    /// -smokegun rifle|blaster: the gun the bot picks at the start of each match (default rifle).
     /// -smokename name: queue with this nickname (e.g. the dev nickname "peet").
     /// -smokeshop: open the shop whenever we're in our spawn zone (with -smokeshot, to see it).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
@@ -43,6 +44,10 @@ namespace Jam.Net
         private float _nextLog;
         private float _nextGrenade;
         private float _nextBuy;
+        private float _nextGunPick;
+        private float _gunPromptSeenAt = -1f;
+        /// <summary>-smokegun rifle|blaster: which gun the bot picks (weapon slot).</summary>
+        private int _gun;
         private AbilityId _wantAbility = AbilityId.Heal;
         private int _money;
         private string _upgrades = "";
@@ -79,6 +84,7 @@ namespace Jam.Net
             _nm = GetComponent<NetworkManager>();
             _duration = float.TryParse(GetArg("-smokeduration"), out float d) ? d : _duration;
             _mode = GetArg("-smokemode") ?? _mode;
+            _gun = string.Equals(GetArg("-smokegun"), "blaster", StringComparison.OrdinalIgnoreCase) ? PlayerWeapons.GunChoices[1] : PlayerWeapons.GunChoices[0];
             GameMenu.SmokeOpenShop = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokeshop") >= 0;
             if (Enum.TryParse(GetArg("-smokeability") ?? "", true, out AbilityId want))
                 _wantAbility = want;
@@ -156,6 +162,14 @@ namespace Jam.Net
             {
                 if (!a.IsOwner)
                     continue;
+                // Pick a few seconds in, so -smokeshot frames show the choice prompt first.
+                if (_gunPromptSeenAt < 0f)
+                    _gunPromptSeenAt = Time.time;
+                if (!a.Weapons.HasGun && Time.time >= _nextGunPick && Time.time - _gunPromptSeenAt > 6f)
+                {
+                    _nextGunPick = Time.time + 1f;
+                    a.Weapons.ServerChooseGun(_gun);
+                }
                 Drive(a);
                 // Exercise the shop: whenever we're back in our spawn zone with money, buy the cheapest upgrade left.
                 if (_mode != "abilities" && Time.time >= _nextBuy && a.InSpawnZone && !a.IsDead.Value)
@@ -172,7 +186,7 @@ namespace Jam.Net
                     }
                 }
                 _money = a.Money.Value;
-                _upgrades = $"vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} q={a.Abilities.Current.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
+                _upgrades = $"gun={(a.Weapons.HasGun ? a.Weapons.Get(a.Weapons.Gun.Value).DisplayName : "none")} vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} q={a.Abilities.Current.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
                             $"{(a.Slowed ? " SLOWED" : "")}{(a.Silenced ? " SILENCED" : "")}{(a.Stunned ? " STUNNED" : "")}";
             }
 
@@ -348,7 +362,6 @@ namespace Jam.Net
                     // Only the Heal bot's opponent needs to take damage; otherwise keep both alive.
                     if (opp.Abilities != null && opp.Abilities.Current.Value == AbilityId.Heal)
                     {
-                        a.Weapons.Select(0);
                         a.Weapons.FireAt(opp.transform.position);
                     }
                     if (ab.CooldownRemaining <= 0f && ab.TryUse(opp.transform.position))
@@ -390,7 +403,6 @@ namespace Jam.Net
                         float holdX = side * 26f;
                         a.ScriptedInput = new MotorInput { X = Mathf.Abs(holdX - pos.x) < 1f ? 0f : Mathf.Sign(holdX - pos.x) };
                     }
-                    a.Weapons.Select(0);
                     if (best != null)
                         a.Weapons.FireAt(best.transform.position);
                     break;
@@ -405,7 +417,6 @@ namespace Jam.Net
                     bool padAhead = HopAhead(arena, pos, dir);
                     bool jump = !arrived && padAhead && a.Motor.Grounded;
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = jump, JumpHeld = !arrived };
-                    a.Weapons.Select(0);
                     if (Mathf.Abs(enemySide * arena.NexusX - pos.x) < 22f)
                         a.Weapons.FireAt(new Vector2(enemySide * arena.NexusX, arena.BaseFloorY + arena.NexusHeight * 0.5f));
                     break;
@@ -427,7 +438,6 @@ namespace Jam.Net
                         _nextGrenade = Time.time + 3f;
                             a.Abilities.TryUse(opponent.transform.position + Vector3.up * 2f);
                     }
-                    a.Weapons.Select(0);
                     a.Weapons.FireAt(opponent.transform.position);
                     break;
                 }

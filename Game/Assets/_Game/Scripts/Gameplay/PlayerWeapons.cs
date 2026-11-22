@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Managing.Timing;
 using FishNet.Object;
+using FishNet.Object.Synchronizing;
 using Jam.Net;
 using Jam.UI;
 using UnityEngine;
@@ -66,9 +67,13 @@ namespace Jam.Gameplay
         private readonly List<ServerProjectile> _serverProjectiles = new();
         private readonly Dictionary<ushort, GrenadeVisual> _visuals = new();
 
-        public int CurrentIndex { get; private set; }
+        /// <summary>Weapon slots the player picks between at the start of a match (left mouse for the rest of it).</summary>
+        public static readonly int[] GunChoices = { 0, 2 };
+
+        /// <summary>The chosen gun's weapon slot, or -1 until the player has picked one this match.</summary>
+        public readonly SyncVar<int> Gun = new(-1);
+        public bool HasGun => Gun.Value >= 0;
         public int Count => _weapons.Length;
-        public WeaponDefinition Current => _weapons[CurrentIndex];
         public WeaponDefinition Get(int index) => _weapons[index];
         public float CooldownRemaining(int index) => Mathf.Max(0f, _nextFireLocal[index] - Time.time);
 
@@ -111,18 +116,27 @@ namespace Jam.Gameplay
                 FireAt(cam.ScreenToWorldPoint(mouse.position.ReadValue()));
         }
 
-        public void Select(int index)
+        /// <summary>Pick the match's gun (one of GunChoices). Once per match; later requests are ignored.</summary>
+        [ServerRpc]
+        public void ServerChooseGun(int index)
         {
-            if (index >= 0 && index < _weapons.Length)
-                CurrentIndex = index;
+            if (HasGun || System.Array.IndexOf(GunChoices, index) < 0 || index >= _weapons.Length)
+                return;
+            Gun.Value = index;
+            Debug.Log($"[Weapons] {_avatar.Nickname.Value} chose {_weapons[index].DisplayName}");
         }
 
-        /// <summary>Owner only: fire the selected weapon. Public so the smoke-test driver can shoot without input devices.</summary>
-        public void FireAt(Vector2 worldPoint) => FireAt(worldPoint, CurrentIndex);
+        /// <summary>Owner only: fire the chosen gun. Public so the smoke-test driver can shoot without input devices.</summary>
+        public void FireAt(Vector2 worldPoint)
+        {
+            if (HasGun)
+                FireAt(worldPoint, Gun.Value);
+        }
 
         /// <summary>
-        /// Owner only: fire a weapon slot. Slot 0 is the gun (left mouse); slot 1 is the grenade,
-        /// fired only by the Grenade Q ability (PlayerAbilities). Returns whether it fired.
+        /// Owner only: fire a weapon slot. Slots 0 (Rifle) and 2 (Blaster) are the guns, one of
+        /// which the player picks per match (left mouse); slot 1 is the grenade, fired only by the
+        /// Grenade Q ability (PlayerAbilities). Returns whether it fired.
         /// </summary>
         public bool FireAt(Vector2 worldPoint, int index)
         {
@@ -159,7 +173,8 @@ namespace Jam.Gameplay
             weapon = null;
             match = _avatar.Match;
             if (match == null || match.Ended || match.State == null || !match.State.IsLive || _avatar.IsDead.Value || index >= _weapons.Length
-                || _avatar.Stunned || (index == PlayerAbilities.GrenadeWeaponIndex && !GrenadeAllowed()))
+                || _avatar.Stunned || (index == PlayerAbilities.GrenadeWeaponIndex && !GrenadeAllowed())
+                || (index != PlayerAbilities.GrenadeWeaponIndex && index != Gun.Value))
                 return false;
             weapon = _weapons[index];
             if (weapon.Kind != kind)

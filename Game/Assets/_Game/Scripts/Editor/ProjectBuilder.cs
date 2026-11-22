@@ -48,7 +48,8 @@ namespace Jam.EditorTools
             EnsureFolder(DataDir);
 
             EnsureFolder(WeaponsDir);
-            WeaponDefinition[] weapons = { EnsureRifle(), EnsureGrenadeLauncher() };
+            // Slots: 0 Rifle and 2 Blaster are the per-match gun choice; 1 is the Grenade ability's projectile.
+            WeaponDefinition[] weapons = { EnsureRifle(), EnsureGrenadeLauncher(), EnsureBlaster() };
             NetworkObject player = BuildPlayerPrefab(weapons);
             NetworkObject matchState = BuildMatchStatePrefab();
             NetworkObject minion = BuildMinionPrefab();
@@ -111,9 +112,19 @@ namespace Jam.EditorTools
         {
             w.DisplayName = "Rifle";
             w.Kind = WeaponKind.Hitscan;
-            w.Damage = 10;
+            w.Damage = 7;
             w.Cooldown = 0.2f;
             w.Range = 24f;
+        });
+
+        /// <summary>Short-range, hard-hitting gun: range 9 is inside tower range (11), so hitting a tower means standing where it can hit you.</summary>
+        private static WeaponDefinition EnsureBlaster() => EnsureWeapon("Blaster", w =>
+        {
+            w.DisplayName = "Blaster";
+            w.Kind = WeaponKind.Hitscan;
+            w.Damage = 18;
+            w.Cooldown = 0.3f;
+            w.Range = 9f;
         });
 
         private static WeaponDefinition EnsureGrenadeLauncher() => EnsureWeapon("GrenadeLauncher", w =>

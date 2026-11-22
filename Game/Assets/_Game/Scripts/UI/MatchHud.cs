@@ -161,8 +161,14 @@ namespace Jam.UI
             PlayerWeapons weapons = me.Weapons;
             PlayerAbilities abilities = me.Abilities;
 
-            WeaponDefinition gun = weapons.Get(0);
-            Slot(new Rect(x, y, w, h), $"LMB  {gun.DisplayName}", weapons.CooldownRemaining(0), gun.Cooldown, me.Stunned ? "STUNNED" : null);
+            if (weapons.HasGun)
+            {
+                int g = weapons.Gun.Value;
+                WeaponDefinition gun = weapons.Get(g);
+                Slot(new Rect(x, y, w, h), $"LMB  {gun.DisplayName}", weapons.CooldownRemaining(g), gun.Cooldown, me.Stunned ? "STUNNED" : null);
+            }
+            else
+                Slot(new Rect(x, y, w, h), "LMB  (choose)", 0f, 0f, null);
             if (abilities != null)
             {
                 string blocked = me.Stunned ? "STUNNED" : me.Silenced ? "SILENCED" : null;
