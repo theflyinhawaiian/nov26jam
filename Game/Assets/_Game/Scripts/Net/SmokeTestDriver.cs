@@ -14,7 +14,13 @@ namespace Jam.Net
     /// - passive: stand at spawn.
     /// - selfnade: run back and forth near spawn throwing grenades forward, at the floor ahead,
     ///   and straight down (regression check for self-damage while moving).
+    /// - pads: walk the mid lane back and forth without hopping, so every jump pad launches us
+    ///   (checks the server's movement validation doesn't flag legal pad launches).
+    /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
+    ///   that the server's movement validation corrects it (corrections= in the result).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
+    /// -smokeshot dir: (windowed, not -batchmode) save the game's own frame to dir every 4s
+    ///   once the match is live, to check the HUD without screenshotting the desktop.
     /// Logs progress, then quits with "SMOKE RESULT" in the log.
     /// </summary>
     public class SmokeTestDriver : MonoBehaviour
@@ -48,6 +54,11 @@ namespace Jam.Net
         private string _countdowns = "";
         private bool _movedBeforeLive;
         private Vector2? _preLivePos;
+        private int _cheats;
+        private string _shotDir;
+        private float _nextShot;
+        private int _shots;
+        private float _nextCheat;
 
         public static bool Requested => Array.IndexOf(Environment.GetCommandLineArgs(), "-smoketest") >= 0;
 
@@ -57,6 +68,7 @@ namespace Jam.Net
             _duration = float.TryParse(GetArg("-smokeduration"), out float d) ? d : _duration;
             _mode = GetArg("-smokemode") ?? _mode;
             _requeue = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokerequeue") >= 0;
+            _shotDir = GetArg("-smokeshot");
 
             _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
             _nm.ClientManager.RegisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
@@ -109,6 +121,14 @@ namespace Jam.Net
                 Debug.Log($"[Smoke] Match live {Time.time - _matchFoundAt:0.0}s after match found");
             }
 
+            if (_shotDir != null && local != null && local.IsLive && Time.time >= _nextShot)
+            {
+                _nextShot = Time.time + 4f;
+                string path = System.IO.Path.Combine(_shotDir, $"hud-{++_shots:00}.png");
+                ScreenCapture.CaptureScreenshot(path);
+                Debug.Log($"[Smoke] Screenshot {path}");
+            }
+
             PlayerAvatar[] avatars = FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None);
             if (avatars.Length > _maxAvatarsSeen)
             {
@@ -135,7 +155,8 @@ namespace Jam.Net
                 Debug.Log($"SMOKE RESULT mode={_mode} matched={_matched} maxAvatarsSeen={_maxAvatarsSeen} minOwnY={_minOwnY:0.00} maxOwnY={_maxOwnY:0.00} " +
                           $"deaths={_deaths} respawns={_respawns} rifleShots={FireDiagnostics.Shots} rifleHits={FireDiagnostics.Hits} " +
                           $"medianErr={FireDiagnostics.MedianError:0.000} minHealth={_minHealth} grenades={_grenadesThrown} " +
-                          $"matches={_matches} ends={_ends} liveAfter=[{_countdowns.Trim()}] movedBeforeLive={_movedBeforeLive} end=\"{_endMessage}\"");
+                          $"matches={_matches} ends={_ends} liveAfter=[{_countdowns.Trim()}] movedBeforeLive={_movedBeforeLive} " +
+                          $"corrections={PlayerAvatar.CorrectionsReceived} cheats={_cheats} end=\"{_endMessage}\"");
                 Application.Quit(_matched ? 0 : 1);
                 enabled = false;
             }
@@ -173,13 +194,46 @@ namespace Jam.Net
                     a.ScriptedInput = default(MotorInput);
                     break;
 
+                case "pads":
+                {
+                    // 7s toward the enemy, 7s back; walking onto a pad launches us.
+                    float dir = Mathf.Repeat(t, 14f) < 7f ? enemySide : -enemySide;
+                    a.ScriptedInput = new MotorInput { X = dir };
+                    break;
+                }
+
+                case "cheat":
+                {
+                    a.ScriptedInput = default(MotorInput);
+                    if (!a.MatchLive)
+                        break;
+                    // Every 2s once live: odd-numbered cheats teleport, even-numbered ones fly up
+                    // at 15 u/s for a second (three times a jump's height).
+                    if (Time.time >= _nextCheat)
+                    {
+                        _nextCheat = Time.time + 2f;
+                        _cheats++;
+                        if (_cheats % 2 == 1)
+                        {
+                            Vector2 to = pos + new Vector2(enemySide * 15f, 0f);
+                            Debug.Log($"[Smoke] Cheat #{_cheats}: teleport {pos} -> {to}");
+                            a.Motor.Teleport(to);
+                        }
+                        else
+                            Debug.Log($"[Smoke] Cheat #{_cheats}: fly up from {pos}");
+                    }
+                    if (_cheats % 2 == 0 && _cheats > 0 && Time.time < _nextCheat - 1f)
+                        a.Motor.Velocity.y = 15f;
+                    break;
+                }
+
                 case "selfnade":
                 {
                     // Sprint between x = ±(44..56) on our own side, flipping direction every 1.2s.
                     float side = a.Team.Value == 0 ? -1f : 1f;
                     float runDir = Mathf.Repeat(t, 2.4f) < 1.2f ? 1f : -1f;
-                    if (Mathf.Abs(pos.x) < 44f) runDir = -side;      // stay clear of the mid pads
-                    if (Mathf.Abs(pos.x) > 56f) runDir = side;
+                    if (Mathf.Abs(pos.x) < 44f) runDir = side;       // stay clear of the mid pads
+                    if (Mathf.Abs(pos.x) > 56f) runDir = -side;      // and off our own nexus
                     bool hop = Mathf.Repeat(t, 2f) < Time.deltaTime * 1.5f;
                     a.ScriptedInput = new MotorInput { X = runDir, JumpPressed = hop, JumpHeld = hop };
 

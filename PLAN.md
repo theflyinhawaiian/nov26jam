@@ -174,6 +174,13 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - Deployed (`bde09e3`) and played in browsers on production. Fixed after a playtest: other players' grenades appeared in mid-air away from the thrower (see Grenades in §5).
 
 **M5 · Validation and HUD.** Server checks for movement and cooldowns, shot-origin check, HUD, opponent arrow, tuning.
+- Done and verified locally with bots (80–150 ms simulated lag): no false corrections for duel, jump-pad riding, or hopping with grenades; the `cheat` bot's 15-unit teleports and flying are snapped back every time.
+- **Movement** (`MovementValidator`, run by `PlayerAvatar` each server tick): horizontal and falling speed budgets (+25%, up to 0.75 s banked for lag bursts), a climb allowance refilled on the ground (jump height) or at a jump pad (its apex height) and lost after falling 1 unit, and no passing through solid ground. A failure sends the owner back to the last good position. Respawns and the debug teleport (T, editor and dev-build servers only) use the same forced teleport, and checks pause until the owner arrives. Limit: a modified client that ignores the teleport keeps moving; the server just resends it every 1.5 s.
+- **Cooldowns:** each weapon banks up to cooldown + 0.5 s of credit and each shot costs one cooldown, so jittery shots pass but the long-run rate can't beat the cooldown.
+- **Shot origin:** must be within 4 units (+0.25 s of the shooter's speed) of the server's position, or of a pending respawn teleport, and not behind solid ground; otherwise the shot starts from the server's position.
+- **HUD** (`MatchHud`, drawn by `GameMenu`): both nexus bars with names, health, weapon slots with cooldowns, respawn countdown, and an edge arrow with distance to an off-screen opponent. `DebugHud` is debug only now.
+- Bot options added: `-smokemode pads|cheat`, `-smokeshot <dir>` (a windowed bot saves its own frame every 4 s, for checking the HUD). Fixed the `selfnade` bot, which ran into its own nexus.
+- Left: tuning after a playtest, and deploying.
 
 **M6 · Ship and playtest.** Deploy, playtest, tune, then destroy at the end of the month.
 
@@ -219,7 +226,7 @@ Builds/Win/Game.exe -batchmode -nographics -client -smoketest -smokemode duel -s
 sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Game.exe
 ```
 
-Other bot options: `-smokemode attack|passive|selfnade`, `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
+Other bot options: `-smokemode attack|passive|selfnade|pads|cheat`, `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
 
 ## 10. Risks
 

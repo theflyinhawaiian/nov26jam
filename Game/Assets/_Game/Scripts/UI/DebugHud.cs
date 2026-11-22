@@ -8,7 +8,7 @@ namespace Jam.UI
 {
     /// <summary>
     /// Debug IMGUI in the top-left corner: start server/client in the editor, connection and
-    /// build info, in-match stats (until the M5 HUD) and the lag-compensation readout.
+    /// build info, ping, movement corrections and the lag-compensation readout.
     /// The player-facing match flow is GameMenu.
     /// </summary>
     [RequireComponent(typeof(NetworkManager), typeof(Bootstrap))]
@@ -120,15 +120,12 @@ namespace Jam.UI
 
         /// <summary>
         /// Debug: put the local player just in front of the opponent's spawn: the first spot at
-        /// least 6 units toward the centre that isn't on a jump pad. Movement is client-authoritative, so this is a local teleport; NetworkTransform
-        /// snaps it on the other screens. Needs to be whitelisted once the server validates movement (M5).
+        /// least 6 units toward the centre that isn't on a jump pad. The server validates
+        /// movement, so this asks it for a forced teleport (editor and dev-build servers only).
         /// </summary>
         private void TeleportToEnemySpawn()
         {
-            PlayerAvatar me = null;
-            foreach (PlayerAvatar a in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-                if (a.IsOwner)
-                    me = a;
+            PlayerAvatar me = PlayerAvatar.LocalPlayer;
             if (me == null || me.IsDead.Value)
                 return;
             foreach (SpawnPoint sp in FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None))
@@ -143,7 +140,7 @@ namespace Jam.UI
                     Vector2 candidate = new(spawn.x + towardCentre * d, spawn.y);
                     if (!physics.OverlapBox(candidate, me.HitboxSize, 0f, Layers.JumpPadMask))
                     {
-                        me.Motor.Teleport(candidate);
+                        me.ServerDebugTeleport(candidate);
                         return;
                     }
                 }
@@ -151,42 +148,11 @@ namespace Jam.UI
             }
         }
 
+        /// <summary>Player stats are on the match HUD (MatchHud); this is debug only.</summary>
         private void DrawMatch()
         {
-            PlayerAvatar me = null, opp = null;
-            foreach (PlayerAvatar a in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (a.IsOwner) me = a;
-                else opp = a;
-            }
-
-            MatchState state = MatchState.Local;
-            if (state != null)
-            {
-                string blue = $"Blue nexus {state.BlueNexusHealth.Value}/{MatchState.NexusMaxHealth}";
-                string red = $"Red nexus {state.RedNexusHealth.Value}/{MatchState.NexusMaxHealth}";
-                GUILayout.Label($"{blue}   {red}");
-            }
-
-            if (me != null)
-            {
-                string team = me.Team.Value == 0 ? "Blue" : "Red";
-                GUILayout.Label(me.IsDead.Value
-                    ? $"You ({team}): DEAD, respawn in {me.RespawnSecondsRemaining:0.0}s"
-                    : $"You ({team}): {me.Health.Value}/{PlayerAvatar.MaxHealth} HP");
-
-                PlayerWeapons w = me.Weapons;
-                string weapons = "";
-                for (int i = 0; i < w.Count; i++)
-                {
-                    string cd = w.CooldownRemaining(i) > 0f ? $" {w.CooldownRemaining(i):0.0}s" : "";
-                    weapons += (i == w.CurrentIndex ? $"[{i + 1} {w.Get(i).DisplayName}{cd}]" : $" {i + 1} {w.Get(i).DisplayName}{cd} ") + "  ";
-                }
-                GUILayout.Label(weapons);
-            }
-            if (opp != null)
-                GUILayout.Label(opp.IsDead.Value ? $"{opp.Nickname.Value}: DEAD" : $"{opp.Nickname.Value}: {opp.Health.Value}/{PlayerAvatar.MaxHealth} HP");
-
+            if (PlayerAvatar.CorrectionsReceived > 0)
+                GUILayout.Label($"Movement corrections: {PlayerAvatar.CorrectionsReceived}");
             GUILayout.Label("` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" : ""));
 
             if (FireDiagnostics.Enabled)

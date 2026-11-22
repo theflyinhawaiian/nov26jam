@@ -34,6 +34,7 @@ namespace Jam.UI
         private bool _leaveMenuOpen;
         private bool _wasConnected;
 
+        private readonly MatchHud _hud = new();
         private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel;
 
         private void Awake()
@@ -143,6 +144,7 @@ namespace Jam.UI
                     Panel(screen, DrawQueued);
                     break;
                 case MatchStatus.InMatch:
+                    _hud.Draw(screen, scale);
                     DrawCountdown(screen);
                     if (_leaveMenuOpen)
                         Panel(screen, DrawLeaveMenu);

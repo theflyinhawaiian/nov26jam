@@ -29,10 +29,28 @@ namespace Jam.Gameplay
         private const float VisualCatchUpFactor = 3f;
         private const float MinVisualCatchUp = 0.3f;
         private const float MaxVisualCatchUp = 1f;
+        /// <summary>
+        /// Server fire-rate check: each weapon banks up to (cooldown + this) seconds of credit
+        /// and each shot costs one cooldown, so shots bunched by network jitter still pass but
+        /// the long-run rate can't beat the cooldown.
+        /// </summary>
+        private const float FireBurstSeconds = 0.5f;
+        /// <summary>
+        /// A shot may start this far from where the server has the shooter (plus a speed term).
+        /// Generous because a pad launch outruns the speed estimate; the wall check is what stops
+        /// shooting from the far side of terrain.
+        /// </summary>
+        private const float MaxOriginOffset = 4f;
+        /// <summary>Extra origin slack per unit of shooter speed (seconds of travel).</summary>
+        private const float OriginLagSeconds = 0.25f;
 
         private PlayerAvatar _avatar;
         private float[] _nextFireLocal;
-        private float[] _nextFireServer;
+        private float[] _fireCredit;
+        private float[] _fireCreditAt;
+        /// <summary>Server only: shots refused (cooldown) or moved (origin), for logs and smoke tests.</summary>
+        public int RejectedShots { get; private set; }
+        public int CorrectedOrigins { get; private set; }
         private ushort _nextProjectileId;
 
         private struct ServerProjectile
@@ -58,10 +76,20 @@ namespace Jam.Gameplay
         {
             _avatar = GetComponent<PlayerAvatar>();
             _nextFireLocal = new float[_weapons.Length];
-            _nextFireServer = new float[_weapons.Length];
+            _fireCredit = new float[_weapons.Length];
+            _fireCreditAt = new float[_weapons.Length];
         }
 
-        public override void OnStartServer() => TimeManager.OnTick += SimulateProjectiles;
+        public override void OnStartServer()
+        {
+            for (int i = 0; i < _weapons.Length; i++)
+            {
+                _fireCredit[i] = _weapons[i].Cooldown + FireBurstSeconds;
+                _fireCreditAt[i] = Time.time;
+            }
+            TimeManager.OnTick += SimulateProjectiles;
+        }
+
         public override void OnStopServer() => TimeManager.OnTick -= SimulateProjectiles;
 
         public override void OnStopClient()
@@ -131,13 +159,39 @@ namespace Jam.Gameplay
             weapon = _weapons[index];
             if (weapon.Kind != kind)
                 return false;
-            // Allow some jitter between client and server clocks.
-            if (Time.time < _nextFireServer[index])
+
+            float credit = Mathf.Min(weapon.Cooldown + FireBurstSeconds, _fireCredit[index] + (Time.time - _fireCreditAt[index]));
+            _fireCreditAt[index] = Time.time;
+            // 10% slack for clock jitter; the debt carries over, so it doesn't raise the rate.
+            if (credit < weapon.Cooldown * 0.9f)
+            {
+                _fireCredit[index] = credit;
+                RejectedShots++;
+                Debug.Log($"[Weapons] {_avatar.Nickname.Value}: {weapon.DisplayName} shot refused, cooldown " +
+                          $"({credit:0.000}s of {weapon.Cooldown:0.000}s banked, {RejectedShots} refused so far)");
                 return false;
-            _nextFireServer[index] = Time.time + weapon.Cooldown * 0.8f;
-            // The shot has to start roughly where the server believes the shooter is.
-            if (Vector2.Distance(origin, transform.position) > 2f)
-                origin = transform.position;
+            }
+            _fireCredit[index] = credit - weapon.Cooldown;
+
+            // The shot has to start roughly where the server believes the shooter is, and not
+            // from the far side of a wall.
+            // The server's copy of a client-authoritative position trails the client's by
+            // latency plus interpolation, so allow more slack the faster the shooter is moving.
+            // Right after a respawn or correction the server still has the old position, so
+            // measure from where the teleport is sending us instead.
+            Vector2 server = _avatar.PendingTeleport ?? (Vector2)transform.position;
+            const uint speedTicks = 3;
+            Vector2 earlier = _avatar.History.GetPosition(TimeManager.Tick - speedTicks);
+            float speed = Vector2.Distance(transform.position, earlier) / (float)(speedTicks * TimeManager.TickDelta);
+            float allowed = MaxOriginOffset + speed * OriginLagSeconds;
+            bool tooFar = Vector2.Distance(origin, server) > allowed;
+            if (tooFar || match.Physics.Linecast(server, origin, Layers.GroundMask).collider != null)
+            {
+                CorrectedOrigins++;
+                Debug.Log($"[Weapons] {_avatar.Nickname.Value}: shot origin {origin} moved to {server} " +
+                          $"({(tooFar ? "too far" : "behind a wall")}, {CorrectedOrigins} so far)");
+                origin = server;
+            }
             return true;
         }
 

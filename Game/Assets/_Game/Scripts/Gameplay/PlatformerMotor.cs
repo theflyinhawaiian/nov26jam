@@ -41,6 +41,8 @@ namespace Jam.Gameplay
         public float Gravity => _gravity;
         public float RunSpeed => _runSpeed;
         public float MaxFallSpeed => _maxFallSpeed;
+        public float JumpHeight => _jumpHeight;
+        public Vector2 Size => _size;
         public float JumpSpeed => Mathf.Sqrt(2f * _gravity * _jumpHeight);
 
         private bool _groundIsOneWay;

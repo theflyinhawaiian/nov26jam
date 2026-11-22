@@ -29,6 +29,15 @@ namespace Jam.Gameplay
         [SerializeField] private Vector2 _hitboxSize = new(1f, 1.5f);
 
         private static readonly Color[] TeamColors = { new(0.3f, 0.55f, 1f), new(1f, 0.35f, 0.3f) };
+        public static Color TeamColor(int team) => TeamColors[Mathf.Clamp(team, 0, TeamColors.Length - 1)];
+
+        /// <summary>Client only: this client's own avatar, and the opponent it observes (a client sees one match).</summary>
+        public static PlayerAvatar LocalPlayer { get; private set; }
+        public static PlayerAvatar RemotePlayer { get; private set; }
+        /// <summary>Client only: server movement corrections received (smoke tests report this).</summary>
+        public static int CorrectionsReceived { get; private set; }
+
+        private MovementValidator _movement;
 
         public PositionHistory History { get; private set; }
         public PlatformerMotor Motor { get; private set; }
@@ -36,6 +45,8 @@ namespace Jam.Gameplay
         /// <summary>Server only: the match this avatar was spawned into.</summary>
         public Match Match { get; set; }
         public Vector2 HitboxSize => _hitboxSize;
+        /// <summary>Server only: where a respawn or correction is moving us, until our position arrives.</summary>
+        public Vector2? PendingTeleport => _movement?.PendingTeleport;
         /// <summary>This avatar's match state (server: via Match; client: the one match it observes).</summary>
         public MatchState State => Match != null ? Match.State : MatchState.Local;
         /// <summary>False during the countdown and after the match is decided: no moving or firing.</summary>
@@ -71,12 +82,15 @@ namespace Jam.Gameplay
 
         public override void OnStartServer()
         {
+            _movement = new MovementValidator(this);
             TimeManager.OnTick += ServerTick;
+            TimeManager.OnPostTick += ServerCheckMovement;
         }
 
         public override void OnStopServer()
         {
             TimeManager.OnTick -= ServerTick;
+            TimeManager.OnPostTick -= ServerCheckMovement;
         }
 
         public override void OnStartClient()
@@ -84,6 +98,10 @@ namespace Jam.Gameplay
             Team.OnChange += OnTeamChanged;
             IsDead.OnChange += OnDeadChanged;
             ApplyVisuals();
+            if (IsOwner)
+                LocalPlayer = this;
+            else
+                RemotePlayer = this;
             if (IsOwner && Camera.main != null && Camera.main.TryGetComponent(out CameraFollow follow))
                 follow.Target = transform;
         }
@@ -92,6 +110,10 @@ namespace Jam.Gameplay
         {
             Team.OnChange -= OnTeamChanged;
             IsDead.OnChange -= OnDeadChanged;
+            if (LocalPlayer == this)
+                LocalPlayer = null;
+            if (RemotePlayer == this)
+                RemotePlayer = null;
         }
 
         private void OnTeamChanged(int prev, int next, bool asServer) => ApplyVisuals();
@@ -156,14 +178,56 @@ namespace Jam.Gameplay
             Vector2 spawn = Match != null ? Match.SpawnPosition(Team.Value) : (Vector2)transform.position;
             Health.Value = MaxHealth;
             IsDead.Value = false;
-            // Movement is client-authoritative, so the owner performs the teleport.
-            TargetTeleport(Owner, spawn);
+            ForceTeleport(spawn, correction: false);
+        }
+        #endregion
+
+        #region Movement validation (server) and forced teleports
+        /// <summary>
+        /// Movement is client-authoritative, so the owner performs the teleport. The validator
+        /// stops checking until the owner's position arrives there.
+        /// </summary>
+        [Server]
+        public void ForceTeleport(Vector2 position, bool correction)
+        {
+            _movement?.ExpectTeleport(position, Time.unscaledTime);
+            TargetTeleport(Owner, position, correction);
+        }
+
+        private void ServerCheckMovement()
+        {
+            if (_movement == null || Match == null || !Match.SceneLoaded || Owner == null || !Owner.IsActive)
+                return;
+            var result = _movement.Check(transform.position, (float)TimeManager.TickDelta, Time.unscaledTime, Match.Physics, out Vector2 correction);
+            if (result == MovementValidator.Result.Ok)
+                return;
+            if (result == MovementValidator.Result.Violation)
+                Debug.Log($"[Movement] Correcting {Nickname.Value} (match {Match.Id}, #{_movement.Corrections}): {_movement.LastFailure}");
+            TargetTeleport(Owner, correction, true);
         }
 
         [TargetRpc]
-        private void TargetTeleport(NetworkConnection conn, Vector2 position)
+        private void TargetTeleport(NetworkConnection conn, Vector2 position, bool correction)
         {
             Motor.Teleport(position);
+            if (correction)
+                CorrectionsReceived++;
+        }
+
+        /// <summary>
+        /// Debug helper (DebugHud's T key): ask the server to move us. Only honoured by editor
+        /// and development-build servers, never the release server.
+        /// </summary>
+        [ServerRpc]
+        public void ServerDebugTeleport(Vector2 position)
+        {
+            if (!Application.isEditor && !Debug.isDebugBuild)
+            {
+                Debug.Log($"[Movement] Ignored debug teleport from {Nickname.Value}: release server.");
+                return;
+            }
+            if (!IsDead.Value && ArenaLayout.Bounds.Contains(position))
+                ForceTeleport(position, correction: false);
         }
         #endregion
 
