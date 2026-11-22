@@ -184,35 +184,16 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 
 ## 9. Building and deploying
 
-Run everything from the repo root, not from inside `Builds/`: Unity deletes the output folder before building and fails if a shell is sitting in it. Close the Unity editor first, because batch mode can't open a project that's already open.
+Commit first, so the build stamp shows the commit instead of "<hash>-dirty". Close the Unity editor, because batch mode can't open a project that's already open. Then, in PowerShell:
 
-In Git Bash:
-
-```bash
-cd ~/Projects/gamedev/nov26jam
-mkdir -p Builds
-UNITY="/c/Program Files/Unity/Hub/Editor/6000.6.10f1/Editor/Unity.exe"
-
-# 1. Commit first, so the build stamp shows the commit instead of "<hash>-dirty".
-git status --short
-
-# 2. Linux dedicated server → Builds/Server (about 1 minute)
-"$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildServer -logFile Builds/build-server.log
-
-# 3. The server build reorders Assets/DefaultPrefabObjects.asset (harmless). Undo it, or the
-#    web build's stamp says "-dirty".
-git checkout -- Game/Assets/DefaultPrefabObjects.asset
-
-# 4. Web build → Builds/Web (about 4 minutes)
-"$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildWeb -logFile Builds/build-web.log
-git checkout -- Game/Assets/DefaultPrefabObjects.asset
-
-# Check both succeeded (look for "Succeeded" and the stamp):
-grep -h "Build stamp\|\[BuildScripts\] .*: " Builds/build-server.log Builds/build-web.log
-
-# 5. Upload both builds and restart the game server. Needs the SSH key at ~/.ssh/nov26jam.
-scripts/deploy.sh            # or: scripts/deploy.sh server | scripts/deploy.sh web
+```powershell
+scripts\build-and-deploy.ps1                      # build server + web, then deploy both
+scripts\build-and-deploy.ps1 -Target web          # or: -Target server
+scripts\build-and-deploy.ps1 -SkipDeploy          # build only
+scripts\build-and-deploy.ps1 -SkipBuild           # deploy the existing builds
 ```
+
+The script works from the repo root, because Unity deletes the output folder before building and fails if a shell is sitting in it. It stops if tracked files have uncommitted changes (`-AllowDirty` overrides this) or if the editor is open. It builds the Linux dedicated server into `Builds/Server` (about 1 minute) and the web client into `Builds/Web` (about 4 minutes). Logs go to `Builds/build-server.log` and `Builds/build-web.log`, and the script prints each build's result and stamp. The server build reorders `Game/Assets/DefaultPrefabObjects.asset` (harmless), and the script undoes that so the web build's stamp isn't "-dirty". Finally it runs `scripts/deploy.sh` through Git Bash. Deploying needs the SSH key at `~/.ssh/nov26jam`. `-Unity <path>` and `-GitBash <path>` override the default install paths.
 
 `deploy.sh` copies the builds over SSH to the box. The server build goes to `/opt/game` and restarts `game-server`; the web build goes to `/srv/web`. It ends by printing the service status.
 
@@ -225,11 +206,12 @@ ssh -i ~/.ssh/nov26jam ubuntu@jam.pmullins.dev 'sudo journalctl -u game-server -
 
 Then hard-refresh https://jam.pmullins.dev/ (Ctrl+F5). The debug panel in the top-left shows the client and server build stamps; both should match the commit you deployed.
 
-**Before DNS resolves**, point the script at the Elastic IP: `DEPLOY_HOST=<ip> scripts/deploy.sh`.
+**Before DNS resolves**, point the script at the Elastic IP: `scripts\build-and-deploy.ps1 -DeployHost <ip>` (or `DEPLOY_HOST=<ip> scripts/deploy.sh` from Git Bash).
 
-**Local bot test before deploying** (optional):
+**Local bot test before deploying** (optional), in Git Bash from the repo root:
 
 ```bash
+UNITY="/c/Program Files/Unity/Hub/Editor/6000.6.10f1/Editor/Unity.exe"
 "$UNITY" -batchmode -quit -projectPath Game -executeMethod Jam.EditorTools.BuildScripts.BuildWindowsDev -logFile Builds/build-win.log
 Builds/Win/Game.exe -batchmode -nographics -server -logFile Builds/srv.log &
 Builds/Win/Game.exe -batchmode -nographics -client -smoketest -smokemode duel -smokeduration 25 -logFile Builds/a.log &
