@@ -191,6 +191,7 @@ namespace Jam.EditorTools
             go.transform.position = rect.center;
             go.transform.localScale = new Vector3(rect.width, rect.height, 1f);
             SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = GreyboxSprite.Get();
             sr.color = color;
             sr.sortingOrder = sortingOrder;
             go.AddComponent<SolidBlock>();

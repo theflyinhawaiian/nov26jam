@@ -163,6 +163,7 @@ namespace Jam.EditorTools
             body.transform.SetParent(root.transform, false);
             body.transform.localScale = new Vector3(1f, 1.5f, 1f);
             SpriteRenderer sr = body.AddComponent<SpriteRenderer>();
+            sr.sprite = GreyboxSprite.Get();
             sr.sortingOrder = 5;
             SetFields(avatar, so => so.FindProperty("_body").objectReferenceValue = sr);
 
