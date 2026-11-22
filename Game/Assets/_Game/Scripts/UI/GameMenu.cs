@@ -37,7 +37,11 @@ namespace Jam.UI
         private bool _wasConnected;
 
         private readonly MatchHud _hud = new();
-        private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel;
+        private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel, _solidPanel;
+        private readonly BackdropBlur _blur = new();
+
+        /// <summary>Smoke tests (-smokeshop): open the shop whenever it's available, for screenshots.</summary>
+        public static bool SmokeOpenShop;
 
         private void Awake()
         {
@@ -111,9 +115,17 @@ namespace Jam.UI
             }
             if (canShop && !_leaveMenuOpen && k?.bKey.wasPressedThisFrame == true)
                 _shopOpen = !_shopOpen;
+            if (canShop && SmokeOpenShop)
+                _shopOpen = true;
             if (!inMatch)
                 _leaveMenuOpen = false;
             CapturesPointer = !inMatch || _leaveMenuOpen || _shopOpen;
+        }
+
+        private void LateUpdate()
+        {
+            if (_shopOpen && !_leaveMenuOpen)
+                _blur.Capture();
         }
 
         private void FindMatch()
@@ -163,7 +175,10 @@ namespace Jam.UI
                     if (_leaveMenuOpen)
                         Panel(screen, DrawLeaveMenu);
                     else if (_shopOpen)
-                        Panel(screen, DrawShop, ShopWidth);
+                    {
+                        _blur.Draw();
+                        Panel(screen, DrawShop, ShopWidth, _solidPanel);
+                    }
                     break;
                 case MatchStatus.Ended:
                     Panel(screen, DrawResults);
@@ -377,17 +392,29 @@ namespace Jam.UI
         #endregion
 
         #region Layout
-        private void Panel(Vector2 screen, System.Action draw, float width = PanelWidth)
+        private void Panel(Vector2 screen, System.Action draw, float width = PanelWidth, GUIStyle style = null)
         {
             // Height is measured on the Layout pass; centre vertically using a generous estimate.
             // The wide shop panel is also the tallest: start it higher.
             float top = width > PanelWidth ? 0.07f : 0.18f;
             Rect area = new((screen.x - width) * 0.5f, screen.y * top, width, screen.y * (0.95f - top));
             GUILayout.BeginArea(area);
-            GUILayout.BeginVertical(_panel);
+            GUILayout.BeginVertical(style ?? _panel);
             draw();
             GUILayout.EndVertical();
             GUILayout.EndArea();
+        }
+
+        /// <summary>A 3x3 texture: one-pixel border around a fill, stretched by a 1-pixel GUIStyle border.</summary>
+        private static Texture2D SolidTexture(Color fill, Color edge)
+        {
+            Texture2D t = new(3, 3) { filterMode = FilterMode.Point, hideFlags = HideFlags.HideAndDontSave };
+            Color[] px = new Color[9];
+            for (int i = 0; i < 9; i++)
+                px[i] = i == 4 ? fill : edge;
+            t.SetPixels(px);
+            t.Apply();
+            return t;
         }
 
         private void EnsureStyles()
@@ -395,6 +422,10 @@ namespace Jam.UI
             if (_title != null)
                 return;
             _panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24) };
+            // 90% opaque, for the shop over its blurred backdrop.
+            _solidPanel = new GUIStyle(_panel);
+            _solidPanel.normal.background = SolidTexture(new Color(0.09f, 0.09f, 0.12f, 0.9f), new Color(1f, 1f, 1f, 0.18f));
+            _solidPanel.border = new RectOffset(1, 1, 1, 1);
             _title = new GUIStyle(GUI.skin.label) { fontSize = 40, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _big = new GUIStyle(_title) { fontSize = 110 };
             _heading = new GUIStyle(GUI.skin.label) { fontSize = 26, alignment = TextAnchor.MiddleCenter, wordWrap = true };

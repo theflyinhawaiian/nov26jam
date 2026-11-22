@@ -62,6 +62,8 @@ namespace Jam.UI
                 FireDiagnostics.Enabled = !FireDiagnostics.Enabled;
             if (FireDiagnostics.Enabled && UnityEngine.InputSystem.Keyboard.current?.tKey.wasPressedThisFrame == true)
                 TeleportToEnemySpawn();
+            if (FireDiagnostics.Enabled && UnityEngine.InputSystem.Keyboard.current?.yKey.wasPressedThisFrame == true)
+                TeleportToCursor();
 
             float scale = Screen.height / ReferenceHeight;
             Vector2 mouse = UnityEngine.InputSystem.Mouse.current?.position.ReadValue() ?? Vector2.negativeInfinity;
@@ -123,6 +125,20 @@ namespace Jam.UI
         /// least 6 units toward the centre that isn't on a jump pad. The server validates
         /// movement, so this asks it for a forced teleport (editor and dev-build servers only).
         /// </summary>
+        /// <summary>
+        /// Dev movement only (nickname "peet"): jump straight to the mouse cursor. The server
+        /// doesn't validate dev movement, so the owner just moves.
+        /// </summary>
+        private void TeleportToCursor()
+        {
+            PlayerAvatar me = PlayerAvatar.LocalPlayer;
+            Camera cam = Camera.main;
+            UnityEngine.InputSystem.Mouse mouse = UnityEngine.InputSystem.Mouse.current;
+            if (me == null || me.IsDead.Value || !me.DevMovement || cam == null || mouse == null)
+                return;
+            me.Motor.Teleport(cam.ScreenToWorldPoint(mouse.position.ReadValue()));
+        }
+
         private void TeleportToEnemySpawn()
         {
             PlayerAvatar me = PlayerAvatar.LocalPlayer;
@@ -153,7 +169,8 @@ namespace Jam.UI
         {
             if (PlayerAvatar.CorrectionsReceived > 0)
                 GUILayout.Label($"Movement corrections: {PlayerAvatar.CorrectionsReceived}");
-            GUILayout.Label("` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" : ""));
+            bool dev = PlayerAvatar.LocalPlayer != null && PlayerAvatar.LocalPlayer.DevMovement;
+            GUILayout.Label("` debug" + (FireDiagnostics.Enabled ? ", T: TP to enemy spawn" + (dev ? ", Y: TP to cursor (dev)" : "") : ""));
 
             if (FireDiagnostics.Enabled)
             {

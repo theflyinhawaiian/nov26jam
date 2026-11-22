@@ -25,6 +25,8 @@ namespace Jam.Net
     ///   hatch at x = 20 (they should burst on it, at y = 36).
     /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
     ///   that the server's movement validation corrects it (corrections= in the result).
+    /// -smokename name: queue with this nickname (e.g. the dev nickname "peet").
+    /// -smokeshop: open the shop whenever we're in our spawn zone (with -smokeshot, to see it).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
     /// -smokeshot dir: (windowed, not -batchmode) save the game's own frame to dir every 4s
     ///   once the match is live, to check the HUD without screenshotting the desktop.
@@ -77,6 +79,7 @@ namespace Jam.Net
             _nm = GetComponent<NetworkManager>();
             _duration = float.TryParse(GetArg("-smokeduration"), out float d) ? d : _duration;
             _mode = GetArg("-smokemode") ?? _mode;
+            GameMenu.SmokeOpenShop = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokeshop") >= 0;
             if (Enum.TryParse(GetArg("-smokeability") ?? "", true, out AbilityId want))
                 _wantAbility = want;
             _requeue = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokerequeue") >= 0;
@@ -95,7 +98,7 @@ namespace Jam.Net
         }
 
         private void Queue() =>
-            _nm.ClientManager.Broadcast(new FindMatchBroadcast { Nickname = $"{_mode}{System.Diagnostics.Process.GetCurrentProcess().Id}" });
+            _nm.ClientManager.Broadcast(new FindMatchBroadcast { Nickname = GetArg("-smokename") ?? $"{_mode}{System.Diagnostics.Process.GetCurrentProcess().Id}" });
 
         private void OnMatchStatus(MatchStatusBroadcast msg, Channel channel)
         {

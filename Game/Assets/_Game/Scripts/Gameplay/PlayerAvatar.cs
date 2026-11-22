@@ -104,6 +104,10 @@ namespace Jam.Gameplay
                 v.Value = until;
         }
 
+        /// <summary>Nickname that turns off server movement validation and allows debug teleports anywhere (dev testing).</summary>
+        public const string DevNickname = "peet";
+        public bool DevMovement => string.Equals(Nickname.Value?.Trim(), DevNickname, System.StringComparison.OrdinalIgnoreCase);
+
         public int Level(ShopItemId id) => id == ShopItemId.Vitality ? VitalityLevel.Value : FirepowerLevel.Value;
 
         public Rect HitboxAt(Vector2 center) => new(center - _hitboxSize * 0.5f, _hitboxSize);
@@ -290,6 +294,8 @@ namespace Jam.Gameplay
         {
             if (_movement == null || Match == null || !Match.SceneLoaded || Owner == null || !Owner.IsActive)
                 return;
+            if (DevMovement)
+                return;
             var result = _movement.Check(transform.position, (float)TimeManager.TickDelta, Time.unscaledTime, Match.Physics, out Vector2 correction);
             if (result == MovementValidator.Result.Ok)
                 return;
@@ -307,13 +313,13 @@ namespace Jam.Gameplay
         }
 
         /// <summary>
-        /// Debug helper (DebugHud's T key): ask the server to move us. Only honoured by editor
-        /// and development-build servers, never the release server.
+        /// Debug helper (DebugHud's T key): ask the server to move us. Honoured by editor and
+        /// development-build servers, and on any server for the dev nickname.
         /// </summary>
         [ServerRpc]
         public void ServerDebugTeleport(Vector2 position)
         {
-            if (!Application.isEditor && !Debug.isDebugBuild)
+            if (!Application.isEditor && !Debug.isDebugBuild && !DevMovement)
             {
                 Debug.Log($"[Movement] Ignored debug teleport from {Nickname.Value}: release server.");
                 return;
