@@ -221,7 +221,7 @@ namespace Jam.Gameplay
             double rewindTick = shooterTick - mm.RewindOffsetTicks;
             HitscanResult result = LagCompensation.Raycast(match, _avatar, origin, direction, w.Range, rewindTick);
 
-            result.Target?.ApplyDamage(w.Damage, DamageSource.FromPlayer(_avatar));
+            result.Target?.ApplyDamage(Mathf.RoundToInt(w.Damage * _avatar.DamageMultiplier), DamageSource.FromPlayer(_avatar));
 
             ObserversTracer(origin, result.EndPoint);
 

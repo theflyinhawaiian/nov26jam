@@ -1,5 +1,6 @@
 using FishNet.Managing;
 using FishNet.Transporting;
+using Jam.Gameplay;
 using Jam.Net;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -32,6 +33,7 @@ namespace Jam.UI
         private string _opponent = "";
         private float _queuedAt;
         private bool _leaveMenuOpen;
+        private bool _shopOpen;
         private bool _wasConnected;
 
         private readonly MatchHud _hud = new();
@@ -95,11 +97,23 @@ namespace Jam.UI
         private void Update()
         {
             bool inMatch = _nm.IsClientStarted && _status == MatchStatus.InMatch;
-            if (inMatch && Keyboard.current?.escapeKey.wasPressedThisFrame == true)
-                _leaveMenuOpen = !_leaveMenuOpen;
+            Keyboard k = Keyboard.current;
+            PlayerAvatar me = PlayerAvatar.LocalPlayer;
+            bool canShop = inMatch && me != null && me.IsSpawned && !me.IsDead.Value && me.InSpawnZone;
+            if (!canShop)
+                _shopOpen = false;
+            if (inMatch && k?.escapeKey.wasPressedThisFrame == true)
+            {
+                if (_shopOpen)
+                    _shopOpen = false;
+                else
+                    _leaveMenuOpen = !_leaveMenuOpen;
+            }
+            if (canShop && !_leaveMenuOpen && k?.bKey.wasPressedThisFrame == true)
+                _shopOpen = !_shopOpen;
             if (!inMatch)
                 _leaveMenuOpen = false;
-            CapturesPointer = !inMatch || _leaveMenuOpen;
+            CapturesPointer = !inMatch || _leaveMenuOpen || _shopOpen;
         }
 
         private void FindMatch()
@@ -144,10 +158,12 @@ namespace Jam.UI
                     Panel(screen, DrawQueued);
                     break;
                 case MatchStatus.InMatch:
-                    _hud.Draw(screen, scale);
+                    _hud.Draw(screen, scale, _shopOpen);
                     DrawCountdown(screen);
                     if (_leaveMenuOpen)
                         Panel(screen, DrawLeaveMenu);
+                    else if (_shopOpen)
+                        Panel(screen, DrawShop);
                     break;
                 case MatchStatus.Ended:
                     Panel(screen, DrawResults);
@@ -198,7 +214,7 @@ namespace Jam.UI
                 GUILayout.Label(_message, _small);
             }
             GUILayout.Space(16);
-            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · 1/2/Q switch weapon · Esc leave", _small);
+            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · 1/2/Q switch weapon · B shop (in spawn) · Esc leave", _small);
         }
 
         private void DrawQueued()
@@ -249,6 +265,30 @@ namespace Jam.UI
             GUI.Label(new Rect(r.x + 3f, r.y + 3f, r.width, r.height), text, style);
             GUI.contentColor = old;
             GUI.Label(r, text, style);
+        }
+
+        private void DrawShop()
+        {
+            PlayerAvatar me = PlayerAvatar.LocalPlayer;
+            if (me == null)
+                return;
+            GUILayout.Label("SHOP", _heading);
+            GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
+            GUILayout.Space(12);
+            foreach (ShopItem item in Shop.Items)
+            {
+                int level = me.Level(item.Id);
+                bool maxed = level >= item.MaxLevel;
+                GUILayout.Label($"{item.Name}  ({level}/{item.MaxLevel})", _label);
+                GUILayout.Label(item.Description, _small);
+                GUI.enabled = !maxed && me.Money.Value >= item.Cost;
+                if (GUILayout.Button(maxed ? "Maxed" : $"Buy  ${item.Cost}", _button))
+                    me.ServerBuy(item.Id);
+                GUI.enabled = true;
+                GUILayout.Space(8);
+            }
+            if (GUILayout.Button("Close (B)", _button))
+                _shopOpen = false;
         }
 
         private void DrawLeaveMenu()

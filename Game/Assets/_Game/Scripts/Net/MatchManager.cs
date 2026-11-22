@@ -44,6 +44,8 @@ namespace Jam.Net
         private float _waveSeconds = LaneDirector.DefaultWaveSeconds;
         /// <summary>Arena every match is played in. -arena TwoLane|Arena on the server (scene name).</summary>
         private ArenaDef _arena = Arenas.TwoLane;
+        /// <summary>Money each player starts a match with; 0 unless -startmoney N (for testing the shop).</summary>
+        private int _startMoney;
 
         private void Awake()
         {
@@ -67,6 +69,12 @@ namespace Jam.Net
                     Debug.LogWarning($"[MatchManager] Unknown arena '{args[i + 1]}'");
             }
             Debug.Log($"[MatchManager] Arena: {_arena.Scene}");
+            i = System.Array.IndexOf(args, "-startmoney");
+            if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int money) && money > 0)
+            {
+                _startMoney = money;
+                Debug.Log($"[MatchManager] Players start with ${money} (testing)");
+            }
             i = System.Array.IndexOf(args, "-waveseconds");
             if (i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out float secs) && secs >= 1f)
@@ -248,7 +256,13 @@ namespace Jam.Net
             // Deferred: this fires from inside damage code that may be iterating the match's lists.
             m.State.ServerNexusDestroyed += winner => _pendingEnds.Add((m, winner));
             m.State.ServerTowerDestroyed += index =>
-                Debug.Log($"[Lanes] Match {m.Id}: {(LaneLayout.TowerTeam(index) == 0 ? "Blue" : "Red")} {LaneLayout.TowerLane(index)} tower destroyed");
+            {
+                int team = LaneLayout.TowerTeam(index);
+                Debug.Log($"[Lanes] Match {m.Id}: {(team == 0 ? "Blue" : "Red")} {LaneLayout.TowerLane(index)} tower destroyed");
+                foreach (PlayerAvatar a in m.Avatars)
+                    if (a != null && a.Team.Value != team)
+                        a.AddMoney(Shop.TowerBounty);
+            };
             m.Lanes = new LaneDirector(m, SpawnMinion, _teamSendsMinions, _waveSeconds);
 
             // Clients that already finished loading (e.g. clientHost) won't raise a presence event later.
@@ -276,6 +290,7 @@ namespace Jam.Net
             avatar.Team.Value = team;
             avatar.Nickname.Value = GetNickname(conn);
             avatar.Match = m;
+            avatar.Money.Value = _startMoney;
             _nm.ServerManager.Spawn(nob, conn, m.Scene);
             m.Avatars.Add(avatar);
             Debug.Log($"[MatchManager] Spawned avatar {nob.ObjectId} for client {conn.ClientId} in match {m.Id}");

@@ -17,12 +17,13 @@ namespace Jam.Net
         public static void Explode(Match match, Vector2 center, WeaponDefinition weapon, DamageSource source)
         {
             float radius = weapon.ExplosionRadius;
+            int damage = Mathf.RoundToInt(weapon.Damage * (source.Player != null ? source.Player.DamageMultiplier : 1f));
             match.CollectTargets(Targets);
             foreach (IDamageable t in Targets)
             {
                 if (!t.Attackable || (t.Kind != TargetKind.Player && t.TeamId == source.Team))
                     continue;
-                int dmg = Falloff(weapon.Damage, DamageMath.DistanceTo(t.Hitbox, center), radius);
+                int dmg = Falloff(damage, DamageMath.DistanceTo(t.Hitbox, center), radius);
                 if (dmg > 0)
                     t.ApplyDamage(dmg, source);
             }

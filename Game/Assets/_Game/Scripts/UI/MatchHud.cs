@@ -9,7 +9,7 @@ namespace Jam.UI
     /// - top: both nexus health bars (Blue left, Red right, like the arena), with player names,
     ///   a pip per standing tower, "SHIELDED" while towers stand, and the next-wave countdown
     /// - world: small health bars over damaged minions and towers
-    /// - bottom-left: your health
+    /// - bottom-left: your health and money; a shop hint while in your spawn zone
     /// - bottom-centre: weapon slots with the selected one highlighted and cooldowns filling
     /// - centre: respawn countdown while dead
     /// - screen edge: an arrow pointing at the opponent when they're off-screen
@@ -33,7 +33,7 @@ namespace Jam.UI
 
         /// <param name="screen">Screen size in reference units.</param>
         /// <param name="scale">Reference units to pixels.</param>
-        public void Draw(Vector2 screen, float scale)
+        public void Draw(Vector2 screen, float scale, bool shopOpen)
         {
             MatchState state = MatchState.Local;
             PlayerAvatar me = PlayerAvatar.LocalPlayer;
@@ -49,6 +49,8 @@ namespace Jam.UI
             DrawWeapons(screen, me.Weapons);
             if (me.IsDead.Value)
                 DrawRespawn(screen, me);
+            else if (me.InSpawnZone && !shopOpen)
+                Shadowed(new Rect(0f, screen.y - 150f, screen.x, 22f), "Safe zone  ·  B to open the shop", _waveLabel);
             if (opp != null && opp.IsSpawned && !opp.IsDead.Value)
                 DrawOpponentArrow(opp, scale);
         }
@@ -138,12 +140,14 @@ namespace Jam.UI
         private void DrawHealth(Vector2 screen, PlayerAvatar me)
         {
             Rect bar = new(20f, screen.y - 44f, 260f, 24f);
-            float fill = me.IsDead.Value ? 0f : (float)me.Health.Value / PlayerAvatar.MaxHealth;
+            float fill = me.IsDead.Value ? 0f : (float)me.Health.Value / me.MaxHp;
             Color color = Color.Lerp(new Color(0.95f, 0.3f, 0.25f), new Color(0.35f, 0.85f, 0.4f), Mathf.InverseLerp(0.2f, 0.7f, fill));
             Bar(bar, fill, color, fromRight: false);
-            GUI.Label(bar, me.IsDead.Value ? "DEAD" : $"{me.Health.Value} / {PlayerAvatar.MaxHealth}", _barText);
+            GUI.Label(bar, me.IsDead.Value ? "DEAD" : $"{me.Health.Value} / {me.MaxHp}", _barText);
             _name.alignment = TextAnchor.LowerLeft;
             Shadowed(new Rect(bar.x, bar.y - 24f, bar.width, 22f), "HEALTH", _name);
+            _name.alignment = TextAnchor.LowerRight;
+            Shadowed(new Rect(bar.x, bar.y - 24f, bar.width, 22f), $"${me.Money.Value}", _name);
         }
 
         private void DrawWeapons(Vector2 screen, PlayerWeapons weapons)

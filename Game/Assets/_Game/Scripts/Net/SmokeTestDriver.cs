@@ -10,6 +10,7 @@ namespace Jam.Net
     /// <summary>
     /// Headless client bot for automated checks: -smoketest [-smokeduration N] [-smokemode duel|attack|passive]
     /// - duel: walk the mid lane to within rifle range, hop, shoot the opponent; a grenade every 3s.
+    /// - farm: drop into the lower lane and shoot enemy minions (bounties); buys upgrades back at spawn.
     /// - attack: walk to the enemy nexus (hopping over jump pads) and shoot it.
     /// - passive: stand at spawn.
     /// - selfnade: run back and forth near spawn throwing grenades forward, at the floor ahead,
@@ -37,6 +38,9 @@ namespace Jam.Net
         private float _startTime;
         private float _nextLog;
         private float _nextGrenade;
+        private float _nextBuy;
+        private int _money;
+        private string _upgrades = "";
         private int _maxAvatarsSeen;
         private bool _matched;
         private string _endMessage = "";
@@ -141,15 +145,34 @@ namespace Jam.Net
             _maxAvatarsSeen = Mathf.Max(_maxAvatarsSeen, avatars.Length);
 
             foreach (PlayerAvatar a in avatars)
-                if (a.IsOwner)
-                    Drive(a);
+            {
+                if (!a.IsOwner)
+                    continue;
+                Drive(a);
+                // Exercise the shop: whenever we're back in our spawn zone with money, buy the cheapest upgrade left.
+                if (Time.time >= _nextBuy && a.InSpawnZone && !a.IsDead.Value)
+                {
+                    _nextBuy = Time.time + 1f;
+                    foreach (ShopItem item in Shop.Items)
+                    {
+                        if (a.Money.Value >= item.Cost && a.Level(item.Id) < item.MaxLevel)
+                        {
+                            Debug.Log($"[Smoke] Buying {item.Name} (${a.Money.Value})");
+                            a.ServerBuy(item.Id);
+                            break;
+                        }
+                    }
+                }
+                _money = a.Money.Value;
+                _upgrades = $"vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp}";
+            }
 
             if (Time.time >= _nextLog)
             {
                 _nextLog = Time.time + 3f;
                 MatchState state = MatchState.Local;
                 string nexus = state != null ? $"nexus={state.BlueNexusHealth.Value}/{state.RedNexusHealth.Value}" : "nexus=?";
-                Debug.Log($"[Smoke] avatars={avatars.Length} ping={_nm.TimeManager.RoundTripTime}ms pos={_lastOwnPos} deaths={_deaths} {nexus} " +
+                Debug.Log($"[Smoke] avatars={avatars.Length} ping={_nm.TimeManager.RoundTripTime}ms pos={_lastOwnPos} deaths={_deaths} {nexus} money={_money} {_upgrades} " +
                           $"rifleShots={FireDiagnostics.Shots} rifleHits={FireDiagnostics.Hits} medianErr={FireDiagnostics.MedianError:0.000}");
             }
 
@@ -272,13 +295,7 @@ namespace Jam.Net
                     float targetX = side * 26f;
                     float dir = Mathf.Sign(targetX - pos.x);
                     bool arrived = Mathf.Abs(targetX - pos.x) < 0.5f;
-                    bool padAhead = false;
-                    foreach (float p in arena.BasePadXs)
-                    {
-                        float ahead = (p - pos.x) * dir;
-                        if (ahead > 0f && ahead < 3f)
-                            padAhead = true;
-                    }
+                    bool padAhead = HopAhead(arena, pos, dir);
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = !arrived && padAhead && a.Motor.Grounded, JumpHeld = !arrived };
                     a.Weapons.Select(1);
                     if (arrived && a.Motor.Grounded && a.Weapons.CooldownRemaining(1) <= 0f)
@@ -289,19 +306,53 @@ namespace Jam.Net
                     break;
                 }
 
+                case "farm":
+                {
+                    // Drop through our jungle-floor hatch at ±20 into the lower lane, then walk
+                    // toward the middle shooting the nearest enemy minion (minion bounties; when
+                    // we die we respawn in the spawn zone and buy upgrades).
+                    float side = a.Team.Value == 0 ? -1f : 1f;
+                    bool inLower = pos.y < arena.BaseFloorY - 1f;
+                    Minion best = null;
+                    float bestD = 24f;
+                    foreach (Minion m in Minion.Active)
+                    {
+                        if (m == null || m.Team.Value == a.Team.Value || m.Health.Value <= 0)
+                            continue;
+                        float d = Vector2.Distance(m.transform.position, pos);
+                        if (d < bestD && Mathf.Abs(m.transform.position.y - pos.y) < 4f)
+                        {
+                            bestD = d;
+                            best = m;
+                        }
+                    }
+                    if (!inLower)
+                    {
+                        // Outer edge of the hatch (17-23), clear of the high pad below it (19-21).
+                        float targetX = side * 22.3f;
+                        float dir = Mathf.Sign(targetX - pos.x);
+                        bool over = Mathf.Abs(targetX - pos.x) < 0.4f;
+                        a.ScriptedInput = new MotorInput { X = over ? 0f : dir, DownHeld = over, JumpPressed = (over && a.Motor.Grounded) || (!over && HopAhead(arena, pos, dir) && a.Motor.Grounded), JumpHeld = !over };
+                    }
+                    else
+                    {
+                        // Hold at ±26, between the pad at ±20 and our tower at ±34; enemy waves come to us.
+                        float holdX = side * 26f;
+                        a.ScriptedInput = new MotorInput { X = Mathf.Abs(holdX - pos.x) < 1f ? 0f : Mathf.Sign(holdX - pos.x) };
+                    }
+                    a.Weapons.Select(0);
+                    if (best != null)
+                        a.Weapons.FireAt(best.transform.position);
+                    break;
+                }
+
                 case "attack":
                 {
-                    // Stop ~16 units short of the enemy nexus (x = ±60), inside rifle range.
+                    // Stop ~11 units short of the enemy nexus (x = ±55), inside rifle range.
                     float targetX = enemySide * 44f;
                     float dir = Mathf.Sign(targetX - pos.x);
                     bool arrived = Mathf.Abs(targetX - pos.x) < 1f;
-                    bool padAhead = false;
-                    foreach (float p in arena.BasePadXs)
-                    {
-                        float ahead = (p - pos.x) * dir;
-                        if (ahead > 0f && ahead < 3f)
-                            padAhead = true;
-                    }
+                    bool padAhead = HopAhead(arena, pos, dir);
                     bool jump = !arrived && padAhead && a.Motor.Grounded;
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = jump, JumpHeld = !arrived };
                     a.Weapons.Select(0);
@@ -339,6 +390,26 @@ namespace Jam.Net
             string[] args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, name);
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
+        /// <summary>
+        /// A jump pad or our own nexus (we spawn behind it) just ahead on the base floor: hop it.
+        /// </summary>
+        private static bool HopAhead(ArenaDef arena, Vector2 pos, float dir)
+        {
+            foreach (float p in arena.BasePadXs)
+            {
+                float ahead = (p - pos.x) * dir;
+                if (ahead > 0f && ahead < 3f)
+                    return true;
+            }
+            foreach (float side in new[] { -1f, 1f })
+            {
+                float face = side * arena.NexusX - dir * arena.NexusWidth * 0.5f;
+                float ahead = (face - pos.x) * dir;
+                if (ahead > 0f && ahead < 2f)
+                    return true;
+            }
+            return false;
         }
     }
 }

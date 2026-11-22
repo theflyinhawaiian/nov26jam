@@ -24,6 +24,11 @@ namespace Jam.Gameplay
         public readonly SyncVar<bool> IsDead = new();
         public readonly SyncVar<uint> RespawnTick = new();
         public readonly SyncVar<int> Deaths = new();
+        /// <summary>Money to spend in the shop (see <see cref="Shop"/>).</summary>
+        public readonly SyncVar<int> Money = new();
+        /// <summary>Shop upgrade levels bought this match.</summary>
+        public readonly SyncVar<int> VitalityLevel = new();
+        public readonly SyncVar<int> FirepowerLevel = new();
 
         [SerializeField] private SpriteRenderer _body;
         [SerializeField] private Vector2 _hitboxSize = new(1f, 1.5f);
@@ -64,6 +69,13 @@ namespace Jam.Gameplay
         public MotorInput? ScriptedInput;
 
         private Coroutine _flash;
+
+        /// <summary>Max health including Vitality upgrades.</summary>
+        public int MaxHp => MaxHealth + VitalityLevel.Value * Shop.VitalityHealth;
+        /// <summary>Multiplier on this player's weapon damage from Firepower upgrades.</summary>
+        public float DamageMultiplier => 1f + FirepowerLevel.Value * Shop.FirepowerDamage;
+
+        public int Level(ShopItemId id) => id == ShopItemId.Vitality ? VitalityLevel.Value : FirepowerLevel.Value;
 
         public Rect HitboxAt(Vector2 center) => new(center - _hitboxSize * 0.5f, _hitboxSize);
 
@@ -189,9 +201,40 @@ namespace Jam.Gameplay
         private void Respawn()
         {
             Vector2 spawn = Match != null ? Match.SpawnPosition(Team.Value) : (Vector2)transform.position;
-            Health.Value = MaxHealth;
+            Health.Value = MaxHp;
             IsDead.Value = false;
             ForceTeleport(spawn, correction: false);
+        }
+        #endregion
+
+        #region Economy
+        [Server]
+        public void AddMoney(int amount)
+        {
+            if (amount > 0)
+                Money.Value += amount;
+        }
+
+        /// <summary>Owner asks to buy an item; only allowed alive, during the match, inside our own spawn zone.</summary>
+        [ServerRpc]
+        public void ServerBuy(ShopItemId id)
+        {
+            if ((int)id >= Shop.Items.Length || IsDead.Value || !MatchLive || !InSpawnZone)
+                return;
+            ShopItem item = Shop.Get(id);
+            if (Money.Value < item.Cost || Level(id) >= item.MaxLevel)
+                return;
+            Money.Value -= item.Cost;
+            switch (id)
+            {
+                case ShopItemId.Vitality:
+                    VitalityLevel.Value++;
+                    Health.Value += Shop.VitalityHealth;
+                    break;
+                case ShopItemId.Firepower:
+                    FirepowerLevel.Value++;
+                    break;
+            }
         }
         #endregion
 

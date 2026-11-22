@@ -538,6 +538,8 @@ namespace Jam.Gameplay
             Health.Value = Mathf.Max(0, Health.Value - amount);
             if (Health.Value == 0)
             {
+                if (source.Player != null)
+                    source.Player.AddMoney(Shop.MinionBounty);
                 ObserversDie(transform.position);
                 Despawn();
             }
