@@ -56,6 +56,7 @@ namespace Jam.Gameplay
             if (_state == null || _state.TowerHealth.Count <= Index)
                 return;
             int hp = _state.TowerHealth[Index];
+            _sprite.enabled = MatchState.TowerInPlay(hp);
             float t = (float)hp / MatchState.TowerMaxHealth;
             _sprite.color = hp > 0
                 ? Color.Lerp(new Color(0.2f, 0.2f, 0.2f), _baseColor, 0.35f + 0.65f * t)

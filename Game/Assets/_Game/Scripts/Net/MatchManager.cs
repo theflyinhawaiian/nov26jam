@@ -42,6 +42,12 @@ namespace Jam.Net
         private readonly bool[] _teamSendsMinions = { true, true };
         /// <summary>Debug: -waveseconds N on the server.</summary>
         private float _waveSeconds = LaneDirector.DefaultWaveSeconds;
+        /// <summary>
+        /// Which lanes are in play (indexed by Lane). Experiment: two lanes (bottom and top) by
+        /// default; -lanes all|bottom,mid,top (any comma list) on the server overrides it.
+        /// Lanes out of play send no minions and their towers are removed.
+        /// </summary>
+        private readonly bool[] _laneActive = { true, false, true };
 
         private void Awake()
         {
@@ -55,6 +61,14 @@ namespace Jam.Net
                 _teamSendsMinions[1] = v is "red" or "both";
                 Debug.Log($"[MatchManager] Minion waves from: blue={_teamSendsMinions[0]} red={_teamSendsMinions[1]}");
             }
+            i = System.Array.IndexOf(args, "-lanes");
+            if (i >= 0 && i + 1 < args.Length)
+            {
+                string v = args[i + 1].ToLowerInvariant();
+                foreach (Lane lane in System.Enum.GetValues(typeof(Lane)))
+                    _laneActive[(int)lane] = v == "all" || System.Array.IndexOf(v.Split(','), lane.ToString().ToLowerInvariant()) >= 0;
+            }
+            Debug.Log($"[MatchManager] Lanes in play: bottom={_laneActive[0]} mid={_laneActive[1]} top={_laneActive[2]}");
             i = System.Array.IndexOf(args, "-waveseconds");
             if (i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out float secs) && secs >= 1f)
@@ -232,11 +246,14 @@ namespace Jam.Net
             NetworkObject stateNob = Instantiate(_matchStatePrefab);
             _nm.ServerManager.Spawn(stateNob, null, m.Scene);
             m.State = stateNob.GetComponent<MatchState>();
+            for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
+                if (!_laneActive[lane])
+                    m.State.ServerRemoveLane((Lane)lane);
             // Deferred: this fires from inside damage code that may be iterating the match's lists.
             m.State.ServerNexusDestroyed += winner => _pendingEnds.Add((m, winner));
             m.State.ServerTowerDestroyed += index =>
                 Debug.Log($"[Lanes] Match {m.Id}: {(LaneLayout.TowerTeam(index) == 0 ? "Blue" : "Red")} {LaneLayout.TowerLane(index)} tower destroyed");
-            m.Lanes = new LaneDirector(m, SpawnMinion, _teamSendsMinions, _waveSeconds);
+            m.Lanes = new LaneDirector(m, SpawnMinion, _teamSendsMinions, _laneActive, _waveSeconds);
 
             // Clients that already finished loading (e.g. clientHost) won't raise a presence event later.
             foreach (NetworkConnection p in m.Players)

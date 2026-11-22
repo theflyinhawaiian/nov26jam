@@ -8,7 +8,7 @@ namespace Jam.Net
     /// <summary>
     /// Server-side lane logic for one match, run every tick by MatchManager:
     /// - Waves: when play starts and every 30 s after (debug: -waveseconds N on the server),
-    ///   each team sends WavePerLane (melee, flyer, ranged, flyer) down each lane, a little apart.
+    ///   each team sends WavePerLane (melee, flyer, ranged, flyer) down each lane in play, a little apart.
     /// - Towers: each standing tower fires once per TowerCooldown at a target in range on its
     ///   level with a clear line: an enemy player who just hurt a friendly player near the
     ///   tower first, then the nearest enemy minion, then an enemy player. It sticks with its
@@ -32,6 +32,7 @@ namespace Jam.Net
         private readonly Match _match;
         private readonly Action<Match, int, Lane, MinionType> _spawn;
         private readonly bool[] _teamSendsMinions;
+        private readonly bool[] _laneActive;
         private readonly float _waveSeconds;
         private readonly List<(float at, int team, Lane lane, MinionType type)> _pendingSpawns = new();
         private readonly float[] _towerNextShot = new float[LaneLayout.TowerCount];
@@ -39,12 +40,13 @@ namespace Jam.Net
         private readonly List<IDamageable> _scratch = new();
         private int _waves;
 
-        public LaneDirector(Match match, Action<Match, int, Lane, MinionType> spawn, bool[] teamSendsMinions, float waveSeconds = DefaultWaveSeconds)
+        public LaneDirector(Match match, Action<Match, int, Lane, MinionType> spawn, bool[] teamSendsMinions, bool[] laneActive, float waveSeconds = DefaultWaveSeconds)
         {
             _waveSeconds = waveSeconds;
             _match = match;
             _spawn = spawn;
             _teamSendsMinions = teamSendsMinions;
+            _laneActive = laneActive;
         }
 
         public void Tick()
@@ -82,7 +84,8 @@ namespace Jam.Net
                 if (!_teamSendsMinions[team])
                     continue;
                 for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
-                    for (int k = 0; k < WavePerLane.Length; k++)
+                    if (_laneActive[lane])
+                        for (int k = 0; k < WavePerLane.Length; k++)
                         _pendingSpawns.Add((now + k * SpawnSpacing, team, (Lane)lane, WavePerLane[k]));
             }
             Debug.Log($"[Lanes] Match {_match.Id}: wave {_waves}, {_match.Minions.Count} minions alive before it");

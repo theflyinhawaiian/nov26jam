@@ -75,6 +75,8 @@ y=0  └────────────────────────
 
 **Towers:** one per lane per team (6 in all), at |x| = 32 (bottom lane: 34, to clear the cover at 30). 800 HP, range 11 on its own level, one shot a second: 20 damage to minions, 12 to players. Target order: an enemy player who just (within 2 s) hurt a friendly player near the tower, then its current target, then the nearest enemy minion, then an enemy player. Towers have no collider: friendly players and minions walk through, and enemy minions stop to attack them. Players and grenades damage enemy towers.
 
+**Lane count (experiment):** by default only the bottom and top lanes are in play. The mid lane sends no minions and its towers are removed, so the nexus shield drops once a team's two flank towers fall. The server option `-lanes all` restores three lanes; `-lanes bottom,mid,top` takes any comma-separated subset.
+
 **Minions:** every 30 s from the start of play, each team sends 4 minions down each lane, in this order: melee (80 HP, reach 1.2, 12 damage), flyer, ranged (45 HP, range 4.5, 7 damage), flyer (40 HP, range 4.5, 6 damage); one attack a second each, walkers at 4 u/s and flyers at 4.5. They fight the nearest enemy minion or player on their level within 9 units that they can reach (melee can't reach flyers), otherwise enemy towers and the (unshielded) nexus. Routes: mid walks to the enemy nexus. Top walks to the top-floor hatch at |x| = 38 near the enemy base and drops into the mid lane. Bottom walks to the high pad at |x| = 44 and rides it up into the mid lane. Enemy towers are on every route, so minions destroy them before reaching the nexus; minions that get there while it's shielded hold position and fight. Walkers queue about 1.1 units behind teammates instead of stacking (melee walk through ranged to lead) and step back if they overlap. Flyers fly in one of three height slots (3, 4.1 and 5.2 units above the lane floor, bobbing a quarter unit) and only queue behind a flyer in the same slot; one held up short of its target switches to a free slot above or below and flies past, and one whose target is out of reach vertically moves to a slot that reaches it. Flyers have no terrain collision, so they only move along lanes and straight up or down the route's hatch columns, and stop short of the nexus. Players and grenades damage enemy minions; friendly ones are immune.
 
 **Match flow**
@@ -239,7 +241,7 @@ sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Ga
 
 Other bot options: `-smokemode attack|passive|selfnade|pads|cheat|watch|platnade` (`platnade` lobs grenades onto its mid-floor hatch at x = 20; `watch` stands at x = 20 on the enemy side, framing the enemy mid tower), `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
 
-Server test options: `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
+Server test options: `-lanes all|bottom,mid,top` (lanes in play; default `bottom,top`), `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
 
 ## 10. Risks
 
