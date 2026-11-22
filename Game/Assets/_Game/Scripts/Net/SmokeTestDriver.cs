@@ -16,6 +16,8 @@ namespace Jam.Net
     ///   and straight down (regression check for self-damage while moving).
     /// - pads: walk the mid lane back and forth without hopping, so every jump pad launches us
     ///   (checks the server's movement validation doesn't flag legal pad launches).
+    /// - watch: walk to x = 20 on the enemy side and stand (with -smokeshot, frames the enemy
+    ///   mid tower where our minions fight).
     /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
     ///   that the server's movement validation corrects it (corrections= in the result).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
@@ -193,6 +195,13 @@ namespace Jam.Net
                 case "passive":
                     a.ScriptedInput = default(MotorInput);
                     break;
+
+                case "watch":
+                {
+                    float hold = enemySide * 20f;
+                    a.ScriptedInput = new MotorInput { X = Mathf.Abs(hold - pos.x) < 0.5f ? 0f : Mathf.Sign(hold - pos.x) };
+                    break;
+                }
 
                 case "pads":
                 {

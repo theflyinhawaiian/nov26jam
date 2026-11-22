@@ -105,10 +105,10 @@ namespace Jam.UI
 
             foreach (Minion m in Minion.Active)
             {
-                if (m == null || m.Health.Value >= Minion.MaxHealth || m.Health.Value <= 0)
+                if (m == null || m.Health.Value >= m.MaxHp || m.Health.Value <= 0)
                     continue;
                 WorldBar(cam, (Vector2)m.transform.position + Vector2.up * 0.8f, 30f * scale, 4f * scale,
-                    (float)m.Health.Value / Minion.MaxHealth, PlayerAvatar.TeamColor(m.Team.Value));
+                    (float)m.Health.Value / m.MaxHp, PlayerAvatar.TeamColor(m.Team.Value));
             }
             for (int i = 0; i < state.TowerHealth.Count; i++)
             {

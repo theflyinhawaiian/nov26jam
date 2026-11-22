@@ -103,13 +103,14 @@ namespace Jam.Net
                 m.Lanes?.Tick();
         }
 
-        private void SpawnMinion(Match m, int team, Lane lane)
+        private void SpawnMinion(Match m, int team, Lane lane, MinionType type)
         {
             if (m.Ended || !m.SceneLoaded || _minionPrefab == null)
                 return;
             NetworkObject nob = Instantiate(_minionPrefab, LaneLayout.MinionSpawn(team, lane), Quaternion.identity);
             Minion minion = nob.GetComponent<Minion>();
             minion.Team.Value = team;
+            minion.Type.Value = type;
             minion.Lane = lane;
             minion.Match = m;
             _nm.ServerManager.Spawn(nob, null, m.Scene);

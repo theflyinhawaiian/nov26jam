@@ -7,8 +7,8 @@ namespace Jam.Net
 {
     /// <summary>
     /// Server-side lane logic for one match, run every tick by MatchManager:
-    /// - Waves: when play starts and every 30 s after (debug: -waveseconds N on the server), each team sends MinionsPerLane
-    ///   minions down each lane, a little apart.
+    /// - Waves: when play starts and every 30 s after (debug: -waveseconds N on the server),
+    ///   each team sends WavePerLane (melee, flyer, ranged, flyer) down each lane, a little apart.
     /// - Towers: each standing tower fires once per TowerCooldown at a target in range on its
     ///   level with a clear line: an enemy player who just hurt a friendly player near the
     ///   tower first, then the nearest enemy minion, then an enemy player. It sticks with its
@@ -17,7 +17,8 @@ namespace Jam.Net
     public class LaneDirector
     {
         public const float DefaultWaveSeconds = 30f;
-        private const int MinionsPerLane = 3;
+        /// <summary>Per lane per team, in spawn order (melee leads).</summary>
+        private static readonly MinionType[] WavePerLane = { MinionType.Melee, MinionType.Flyer, MinionType.Ranged, MinionType.Flyer };
         private const float SpawnSpacing = 0.8f;
 
         private const float TowerRange = 11f;
@@ -29,16 +30,16 @@ namespace Jam.Net
         private const float TowerLevelTolerance = 5f;
 
         private readonly Match _match;
-        private readonly Action<Match, int, Lane> _spawn;
+        private readonly Action<Match, int, Lane, MinionType> _spawn;
         private readonly bool[] _teamSendsMinions;
         private readonly float _waveSeconds;
-        private readonly List<(float at, int team, Lane lane)> _pendingSpawns = new();
+        private readonly List<(float at, int team, Lane lane, MinionType type)> _pendingSpawns = new();
         private readonly float[] _towerNextShot = new float[LaneLayout.TowerCount];
         private readonly IDamageable[] _towerTarget = new IDamageable[LaneLayout.TowerCount];
         private readonly List<IDamageable> _scratch = new();
         private int _waves;
 
-        public LaneDirector(Match match, Action<Match, int, Lane> spawn, bool[] teamSendsMinions, float waveSeconds = DefaultWaveSeconds)
+        public LaneDirector(Match match, Action<Match, int, Lane, MinionType> spawn, bool[] teamSendsMinions, float waveSeconds = DefaultWaveSeconds)
         {
             _waveSeconds = waveSeconds;
             _match = match;
@@ -64,9 +65,9 @@ namespace Jam.Net
             {
                 if (now < _pendingSpawns[i].at)
                     continue;
-                (_, int team, Lane lane) = _pendingSpawns[i];
+                (_, int team, Lane lane, MinionType type) = _pendingSpawns[i];
                 _pendingSpawns.RemoveAt(i);
-                _spawn(_match, team, lane);
+                _spawn(_match, team, lane, type);
             }
 
             for (int i = 0; i < LaneLayout.TowerCount; i++)
@@ -81,8 +82,8 @@ namespace Jam.Net
                 if (!_teamSendsMinions[team])
                     continue;
                 for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
-                    for (int k = 0; k < MinionsPerLane; k++)
-                        _pendingSpawns.Add((now + k * SpawnSpacing, team, (Lane)lane));
+                    for (int k = 0; k < WavePerLane.Length; k++)
+                        _pendingSpawns.Add((now + k * SpawnSpacing, team, (Lane)lane, WavePerLane[k]));
             }
             Debug.Log($"[Lanes] Match {_match.Id}: wave {_waves}, {_match.Minions.Count} minions alive before it");
         }
