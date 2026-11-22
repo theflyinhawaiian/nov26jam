@@ -44,7 +44,7 @@ namespace Jam.Gameplay
 
         int IDamageable.TeamId => Team.Value;
         TargetKind IDamageable.Kind => TargetKind.Player;
-        bool IDamageable.Attackable => IsSpawned && !IsDead.Value;
+        bool IDamageable.Attackable => IsSpawned && !IsDead.Value && !InSpawnZone;
         Rect IDamageable.Hitbox => HitboxAt(transform.position);
 
         public PositionHistory History { get; private set; }
@@ -66,6 +66,9 @@ namespace Jam.Gameplay
         private Coroutine _flash;
 
         public Rect HitboxAt(Vector2 center) => new(center - _hitboxSize * 0.5f, _hitboxSize);
+
+        /// <summary>Inside our own team's starting area behind the nexus, where we can't be damaged.</summary>
+        public bool InSpawnZone => Arenas.For(gameObject).SpawnZone(Team.Value).Contains(transform.position);
 
         public float RespawnSecondsRemaining =>
             IsDead.Value ? Mathf.Max(0f, (float)((long)RespawnTick.Value - TimeManager.Tick) * (float)TimeManager.TickDelta) : 0f;
@@ -162,7 +165,7 @@ namespace Jam.Gameplay
         /// <summary>Server only. Players take damage from anyone, including their own grenades.</summary>
         public void ApplyDamage(int amount, DamageSource source)
         {
-            if (!IsServerStarted || IsDead.Value || amount <= 0)
+            if (!IsServerStarted || IsDead.Value || amount <= 0 || InSpawnZone)
                 return;
             if (source.Player != null && source.Player != this && source.Team != Team.Value)
                 source.Player.LastHitEnemyPlayerAt = Time.time;

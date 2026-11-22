@@ -28,12 +28,18 @@ namespace Jam
         public float TopDropX;
         public float BottomPadX;
         public float HighPadApex;
-        /// <summary>Minions hold here in front of the enemy nexus (nexus face is at 58.5).</summary>
-        public float NexusHoldX = 57f;
+        /// <summary>Nexus centre |x|; it's wide and low enough to jump over (jump height is 5).</summary>
+        public float NexusX = 55f;
+        public float NexusWidth = 5f;
+        public float NexusHeight = 2.5f;
+        /// <summary>Minions hold here in front of the enemy nexus (nexus face is at NexusX - NexusWidth/2 = 52.5).</summary>
+        public float NexusHoldX = 51.5f;
         /// <summary>Flyers on the base floor stay this side of the nexus face so they never pass through it.</summary>
-        public float FlyerMaxX = 57.5f;
-        public float NexusX = 60f;
-        public float PlayerSpawnX = 56f;
+        public float FlyerMaxX = 52f;
+        /// <summary>Players spawn behind their nexus, inside the spawn zone (nexus back face to the side wall).</summary>
+        public float PlayerSpawnX = 60.5f;
+        /// <summary>How high the spawn zone reaches above the base floor.</summary>
+        public float SpawnZoneHeight = 6f;
         /// <summary>Jump pads on the base floor (both sides), for bots that walk it.</summary>
         public float[] BasePadXs;
 
@@ -53,6 +59,17 @@ namespace Jam
 
         public Vector2 TowerMuzzle(int team, Lane lane) => TowerCenter(team, lane) + Vector2.up * (LaneLayout.TowerHeight * 0.4f);
 
+        /// <summary>
+        /// A team's starting area behind its nexus, from the nexus's back face to the side wall.
+        /// That team's players can't be damaged inside it.
+        /// </summary>
+        public Rect SpawnZone(int team)
+        {
+            float inner = NexusX + NexusWidth * 0.5f;
+            float xMin = team == 0 ? -HalfWidth : inner;
+            return new Rect(xMin, BaseFloorY, HalfWidth - inner, SpawnZoneHeight);
+        }
+
         public Vector2 MinionSpawn(int team, Lane lane) =>
             new(LaneLayout.Side(team) * MinionSpawnX[(int)lane], FloorY(lane) + 0.6f);
     }
@@ -71,11 +88,11 @@ namespace Jam
             HasLane = new[] { true, true, true },
             LaneFloorY = new[] { ArenaLayout.BottomFloorY, ArenaLayout.MidFloorY, ArenaLayout.TopFloorY },
             TowerX = new[] { 34f, 32f, 32f },
-            MinionSpawnX = new[] { 60f, 54f, 60f },
+            MinionSpawnX = new[] { 60f, 51f, 60f },
             TopDropX = 38f,
             BottomPadX = 44f,
             HighPadApex = 39f,
-            BasePadXs = new[] { -50f, -38f, -14f, -2f, 2f, 14f, 38f, 50f },
+            BasePadXs = new[] { -48f, -38f, -14f, -2f, 2f, 14f, 38f, 48f },
         };
 
         /// <summary>

@@ -306,7 +306,7 @@ namespace Jam.Net
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = jump, JumpHeld = !arrived };
                     a.Weapons.Select(0);
                     if (Mathf.Abs(enemySide * arena.NexusX - pos.x) < 22f)
-                        a.Weapons.FireAt(new Vector2(enemySide * arena.NexusX, arena.BaseFloorY + 3f));
+                        a.Weapons.FireAt(new Vector2(enemySide * arena.NexusX, arena.BaseFloorY + arena.NexusHeight * 0.5f));
                     break;
                 }
 

@@ -15,7 +15,7 @@ namespace Jam.EditorTools
     ///         top lane (flank)                                   ↑ high pads
     ///   y=72  ══ top floor: solid + one-way hatches at ±14, ±38 ═══════
     ///         jungle: one-way ledges at y+20/24/28/32, cover blocks
-    ///         mid lane: nexus at ±60, spawns at ±56
+    ///         mid lane: nexus at ±55, spawn zones behind it (±57.5 to the walls)
     ///   y=36  ══ mid floor: solid + one-way hatches at ±20, ±44 ═══════
     ///         jungle (same pattern)
     ///         bottom lane (flank)
@@ -33,8 +33,6 @@ namespace Jam.EditorTools
         private const float HatchWidth = 6f;
         private const float LedgeWidth = 8f;
         private const float PadWidth = 2f;
-        private const float NexusWidth = 3f;
-        private const float NexusHeight = 6f;
 
         // Apex heights: low pads land you on the first ledge (y+20), high pads clear the next floor (y+36).
         private const float LowPadApex = 21.5f;
@@ -72,7 +70,7 @@ namespace Jam.EditorTools
             FloorY = ArenaLayout.MidFloorY,
             HatchXs = new[] { 14f, 38f },
             OddLedgeXs = new[] { 2f, 26f, 50f },
-            LowPadXs = new[] { 2f, 50f },
+            LowPadXs = new[] { 2f, 48f },
             Cover = new[] { (8f, 22f, 2f, 3f), (32f, 30f, 2f, 3f) },
         };
 
@@ -111,7 +109,7 @@ namespace Jam.EditorTools
         ///   y=54  -- ceiling ----------------------------------------------
         ///         upper lane: towers at +-32, cover at +-26
         ///   y=36  == upper floor: solid + one-way hatches at +-14, +-38 ====
-        ///         jungle: nexus at +-60, player spawns at +-56; high pads under
+        ///         jungle: nexus at +-55, spawn zones behind it; high pads under
         ///         the upper hatches; one-way ledges stepping up to them
         ///   y=18  == jungle floor: solid + one-way hatches at +-20, +-44 ===
         ///         lower lane: towers at +-34, cover at +-30, high pads under
@@ -179,15 +177,21 @@ namespace Jam.EditorTools
             Block(shell, "Wall R", new Rect(halfW, -2f, 2f, def.Height + 4f), GroundColor, 0, Layers.Ground);
         }
 
-        /// <summary>Nexus + player spawn per team on the base floor. Team 0 = Blue (left), team 1 = Red (right).</summary>
+        /// <summary>
+        /// Nexus, starting area and player spawn per team on the base floor; the spawn is behind
+        /// the nexus. Team 0 = Blue (left), team 1 = Red (right).
+        /// </summary>
         private static void Bases(ArenaDef def)
         {
             Transform bases = Group("Bases");
             for (int team = 0; team < 2; team++)
             {
                 float s = LaneLayout.Side(team);
-                GameObject nexus = Block(bases, team == 0 ? "Nexus Blue" : "Nexus Red", CenterBottom(s * def.NexusX, def.BaseFloorY, NexusWidth, NexusHeight), TeamColors[team], 2, Layers.Ground);
+                GameObject nexus = Block(bases, team == 0 ? "Nexus Blue" : "Nexus Red", CenterBottom(s * def.NexusX, def.BaseFloorY, def.NexusWidth, def.NexusHeight), TeamColors[team], 2, Layers.Ground);
                 nexus.AddComponent<Nexus>().Team = team;
+                Color zone = TeamColors[team];
+                zone.a = 0.18f;
+                Block(bases, team == 0 ? "Spawn Zone Blue" : "Spawn Zone Red", def.SpawnZone(team), zone, -5, layer: -1);
                 GameObject spawn = new(team == 0 ? "Spawn Blue" : "Spawn Red");
                 spawn.transform.SetParent(bases, false);
                 spawn.transform.position = new Vector3(s * def.PlayerSpawnX, def.BaseFloorY + 0.8f, 0f);
