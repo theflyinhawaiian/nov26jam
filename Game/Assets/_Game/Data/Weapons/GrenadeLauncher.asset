@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27fb7bc95409d3a40b45040ec3fa5d32, type: 3}
   m_Name: GrenadeLauncher
   m_EditorClassIdentifier: Assembly-CSharp::Jam.Gameplay.WeaponDefinition
-  DisplayName: Grenades
+  DisplayName: Grenade
   Kind: 1
   Damage: 40
-  Cooldown: 1
+  Cooldown: 3
   Range: 24
   LaunchSpeed: 22.4
   ProjectileGravity: 25

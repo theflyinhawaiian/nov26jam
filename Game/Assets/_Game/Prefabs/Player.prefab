@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 7118838112963387493}
   - component: {fileID: 1675674586312478017}
   - component: {fileID: 5779633150495609191}
+  - component: {fileID: 2669230980836801884}
   - component: {fileID: 3562334939760877738}
   m_Layer: 0
   m_Name: Player
@@ -200,6 +201,21 @@ MonoBehaviour:
   _weapons:
   - {fileID: 11400000, guid: 72b05ffa362775d41989377df85d3c48, type: 2}
   - {fileID: 11400000, guid: 8f7dcfcff9cf16e4fa98bde6ae7858f1, type: 2}
+--- !u!114 &2669230980836801884
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2286418313938356266}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bb287531ab7eb154ba2518e680c56a7c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Jam.Gameplay.PlayerAbilities
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 947897344342945034}
+  _networkObjectCache: {fileID: 0}
 --- !u!114 &3562334939760877738
 MonoBehaviour:
   m_ObjectHideFlags: 0

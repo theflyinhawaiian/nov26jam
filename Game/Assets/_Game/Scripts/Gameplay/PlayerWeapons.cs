@@ -105,14 +105,6 @@ namespace Jam.Gameplay
             if (!IsOwner || _avatar.IsDead.Value || _avatar.ScriptedInput.HasValue)
                 return;
 
-            Keyboard k = Keyboard.current;
-            if (k != null)
-            {
-                if (k.digit1Key.wasPressedThisFrame) Select(0);
-                if (k.digit2Key.wasPressedThisFrame) Select(1);
-                if (k.qKey.wasPressedThisFrame) Select((CurrentIndex + 1) % _weapons.Length);
-            }
-
             Mouse mouse = Mouse.current;
             Camera cam = Camera.main;
             if (mouse != null && cam != null && mouse.leftButton.isPressed && !DebugHud.PointerOverHud && !GameMenu.CapturesPointer)
@@ -125,20 +117,27 @@ namespace Jam.Gameplay
                 CurrentIndex = index;
         }
 
-        /// <summary>Owner only. Public so the smoke-test driver can shoot without input devices.</summary>
-        public void FireAt(Vector2 worldPoint)
+        /// <summary>Owner only: fire the selected weapon. Public so the smoke-test driver can shoot without input devices.</summary>
+        public void FireAt(Vector2 worldPoint) => FireAt(worldPoint, CurrentIndex);
+
+        /// <summary>
+        /// Owner only: fire a weapon slot. Slot 0 is the gun (left mouse); slot 1 is the grenade,
+        /// fired only by the Grenade Q ability (PlayerAbilities). Returns whether it fired.
+        /// </summary>
+        public bool FireAt(Vector2 worldPoint, int index)
         {
-            if (!IsOwner || _avatar.IsDead.Value || !_avatar.MatchLive)
-                return;
-            int index = CurrentIndex;
+            if (!IsOwner || _avatar.IsDead.Value || !_avatar.MatchLive || _avatar.Stunned || index < 0 || index >= _weapons.Length)
+                return false;
             WeaponDefinition w = _weapons[index];
             if (Time.time < _nextFireLocal[index])
-                return;
+                return false;
+            if (index == PlayerAbilities.GrenadeWeaponIndex && !GrenadeAllowed())
+                return false;
 
             Vector2 origin = transform.position;
             Vector2 aim = worldPoint - origin;
             if (aim.sqrMagnitude < 1e-4f)
-                return;
+                return false;
             aim.Normalize();
             _nextFireLocal[index] = Time.time + w.Cooldown;
 
@@ -147,14 +146,20 @@ namespace Jam.Gameplay
                 FireHitscanLocal((byte)index, w, origin, aim, pt);
             else
                 FireProjectileLocal((byte)index, w, origin, aim, pt);
+            return true;
         }
+
+        /// <summary>The grenade is the Grenade ability: only while we hold it and aren't silenced.</summary>
+        private bool GrenadeAllowed() =>
+            _avatar.Abilities != null && _avatar.Abilities.Current.Value == AbilityId.Grenade && !_avatar.Silenced;
 
         /// <summary>Shared server-side checks. May correct the origin to the server's view of the shooter.</summary>
         private bool ServerValidateFire(byte index, WeaponKind kind, ref Vector2 origin, out WeaponDefinition weapon, out Match match)
         {
             weapon = null;
             match = _avatar.Match;
-            if (match == null || match.Ended || match.State == null || !match.State.IsLive || _avatar.IsDead.Value || index >= _weapons.Length)
+            if (match == null || match.Ended || match.State == null || !match.State.IsLive || _avatar.IsDead.Value || index >= _weapons.Length
+                || _avatar.Stunned || (index == PlayerAbilities.GrenadeWeaponIndex && !GrenadeAllowed()))
                 return false;
             weapon = _weapons[index];
             if (weapon.Kind != kind)

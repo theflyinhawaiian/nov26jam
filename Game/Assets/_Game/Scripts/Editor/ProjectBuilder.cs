@@ -118,10 +118,11 @@ namespace Jam.EditorTools
 
         private static WeaponDefinition EnsureGrenadeLauncher() => EnsureWeapon("GrenadeLauncher", w =>
         {
-            w.DisplayName = "Grenades";
+            w.DisplayName = "Grenade";
             w.Kind = WeaponKind.Projectile;
             w.Damage = 40;
-            w.Cooldown = 1f;
+            // Fired by the Grenade Q ability (PlayerAbilities), not selectable as a weapon.
+            w.Cooldown = 3f;
             // Max range on flat ground = speed^2 / gravity ≈ 20 units.
             w.LaunchSpeed = 22.4f;
             w.ProjectileGravity = 25f;
@@ -157,7 +158,7 @@ namespace Jam.EditorTools
                 so.FindProperty("_teleportThreshold").floatValue = 4f;
             });
 
-            // PlayerAvatar's [RequireComponent] adds PositionHistory, PlatformerMotor and PlayerWeapons.
+            // PlayerAvatar's [RequireComponent] adds PositionHistory, PlatformerMotor, PlayerWeapons and PlayerAbilities.
             // Adding any of them separately would create duplicates.
             PlayerAvatar avatar = root.AddComponent<PlayerAvatar>();
             PlayerWeapons playerWeapons = root.GetComponent<PlayerWeapons>();

@@ -163,7 +163,7 @@ namespace Jam.UI
                     if (_leaveMenuOpen)
                         Panel(screen, DrawLeaveMenu);
                     else if (_shopOpen)
-                        Panel(screen, DrawShop);
+                        Panel(screen, DrawShop, ShopWidth);
                     break;
                 case MatchStatus.Ended:
                     Panel(screen, DrawResults);
@@ -214,7 +214,7 @@ namespace Jam.UI
                 GUILayout.Label(_message, _small);
             }
             GUILayout.Space(16);
-            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · 1/2/Q switch weapon · B shop (in spawn) · Esc leave", _small);
+            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · Q ability (starts as Grenade) · B shop (in spawn) · Esc leave", _small);
         }
 
         private void DrawQueued()
@@ -267,14 +267,21 @@ namespace Jam.UI
             GUI.Label(r, text, style);
         }
 
+        private const float ShopWidth = 760f;
+
         private void DrawShop()
         {
             PlayerAvatar me = PlayerAvatar.LocalPlayer;
-            if (me == null)
+            if (me == null || me.Abilities == null)
                 return;
             GUILayout.Label("SHOP", _heading);
             GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
             GUILayout.Space(12);
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 80f) * 0.5f));
+            GUILayout.Label("UPGRADES", _label);
+            GUILayout.Space(4);
             foreach (ShopItem item in Shop.Items)
             {
                 int level = me.Level(item.Id);
@@ -287,6 +294,34 @@ namespace Jam.UI
                 GUI.enabled = true;
                 GUILayout.Space(8);
             }
+            GUILayout.EndVertical();
+
+            GUILayout.Space(24);
+
+            PlayerAbilities ab = me.Abilities;
+            GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 80f) * 0.5f));
+            GUILayout.Label($"Q ABILITY  ·  you have {ab.CurrentDef.Name}", _label);
+            GUILayout.Label("Buying replaces it.", _small);
+            GUILayout.Space(4);
+            for (int slot = 0; slot < 2; slot++)
+            {
+                AbilityDef def = Abilities.Get(ab.Offer(slot));
+                GUILayout.Label($"{def.Name}  ·  {def.Cooldown:0}s cooldown", _label);
+                GUILayout.Label(def.Description, _small);
+                GUI.enabled = me.Money.Value >= def.Cost;
+                if (GUILayout.Button($"Buy  ${def.Cost}", _button))
+                    ab.ServerBuy((byte)slot);
+                GUI.enabled = true;
+                GUILayout.Space(8);
+            }
+            GUI.enabled = me.Money.Value >= Abilities.RerollCost;
+            if (GUILayout.Button($"Reroll offers  ${Abilities.RerollCost}", _button))
+                ab.ServerReroll();
+            GUI.enabled = true;
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8);
             if (GUILayout.Button("Close (B)", _button))
                 _shopOpen = false;
         }
@@ -342,10 +377,12 @@ namespace Jam.UI
         #endregion
 
         #region Layout
-        private void Panel(Vector2 screen, System.Action draw)
+        private void Panel(Vector2 screen, System.Action draw, float width = PanelWidth)
         {
             // Height is measured on the Layout pass; centre vertically using a generous estimate.
-            Rect area = new((screen.x - PanelWidth) * 0.5f, screen.y * 0.18f, PanelWidth, screen.y * 0.7f);
+            // The wide shop panel is also the tallest: start it higher.
+            float top = width > PanelWidth ? 0.07f : 0.18f;
+            Rect area = new((screen.x - width) * 0.5f, screen.y * top, width, screen.y * (0.95f - top));
             GUILayout.BeginArea(area);
             GUILayout.BeginVertical(_panel);
             draw();

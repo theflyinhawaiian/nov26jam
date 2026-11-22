@@ -44,6 +44,14 @@ namespace Jam.Gameplay
             Object.Destroy(Quad("Explosion", center, Vector2.one * radius * 2f, new Color(1f, 0.55f, 0.1f, 0.45f), 19), 0.15f);
         }
 
+        /// <summary>A brief translucent square showing an area (heal, teleport, slow field, bolt impact).</summary>
+        public static void Ring(Vector2 center, float radius, Color color, float duration = 0.25f)
+        {
+            if (Application.isBatchMode)
+                return;
+            Object.Destroy(Quad("Ring", center, Vector2.one * radius * 2f, color, 19), duration);
+        }
+
         private static GameObject Quad(string name, Vector2 center, Vector2 size, Color color, int sortingOrder)
         {
             GameObject go = new(name);

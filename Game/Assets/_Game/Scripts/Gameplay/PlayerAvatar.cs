@@ -13,6 +13,7 @@ namespace Jam.Gameplay
     /// platformer movement (PlatformerMotor + NetworkTransform). Weapons live in PlayerWeapons.
     /// </summary>
     [RequireComponent(typeof(PositionHistory), typeof(PlatformerMotor), typeof(PlayerWeapons))]
+    [RequireComponent(typeof(PlayerAbilities))]
     public class PlayerAvatar : NetworkBehaviour, IDamageable
     {
         public const int MaxHealth = 100;
@@ -29,6 +30,10 @@ namespace Jam.Gameplay
         /// <summary>Shop upgrade levels bought this match.</summary>
         public readonly SyncVar<int> VitalityLevel = new();
         public readonly SyncVar<int> FirepowerLevel = new();
+        /// <summary>Status effects: active until these server ticks (see <see cref="StatusEffect"/>).</summary>
+        public readonly SyncVar<uint> SlowUntilTick = new();
+        public readonly SyncVar<uint> SilenceUntilTick = new();
+        public readonly SyncVar<uint> StunUntilTick = new();
 
         [SerializeField] private SpriteRenderer _body;
         [SerializeField] private Vector2 _hitboxSize = new(1f, 1.5f);
@@ -55,6 +60,7 @@ namespace Jam.Gameplay
         public PositionHistory History { get; private set; }
         public PlatformerMotor Motor { get; private set; }
         public PlayerWeapons Weapons { get; private set; }
+        public PlayerAbilities Abilities { get; private set; }
         /// <summary>Server only: the match this avatar was spawned into.</summary>
         public Match Match { get; set; }
         public Vector2 HitboxSize => _hitboxSize;
@@ -74,6 +80,29 @@ namespace Jam.Gameplay
         public int MaxHp => MaxHealth + VitalityLevel.Value * Shop.VitalityHealth;
         /// <summary>Multiplier on this player's weapon damage from Firepower upgrades.</summary>
         public float DamageMultiplier => 1f + FirepowerLevel.Value * Shop.FirepowerDamage;
+
+        public bool Slowed => TimeManager != null && TimeManager.Tick < SlowUntilTick.Value;
+        public bool Silenced => TimeManager != null && TimeManager.Tick < SilenceUntilTick.Value;
+        public bool Stunned => TimeManager != null && TimeManager.Tick < StunUntilTick.Value;
+
+        /// <summary>Seconds left on a status effect (0 when it's not active).</summary>
+        public float StatusSeconds(StatusEffect e)
+        {
+            uint until = e switch { StatusEffect.Slow => SlowUntilTick.Value, StatusEffect.Silence => SilenceUntilTick.Value, _ => StunUntilTick.Value };
+            return TimeManager == null ? 0f : Mathf.Max(0f, (float)((long)until - TimeManager.Tick) * (float)TimeManager.TickDelta);
+        }
+
+        /// <summary>Server only. Extends (never shortens) the effect. Players in their spawn zone are immune.</summary>
+        [Server]
+        public void ApplyStatus(StatusEffect e, float seconds)
+        {
+            if (IsDead.Value || InSpawnZone)
+                return;
+            uint until = TimeManager.Tick + TimeManager.TimeToTicks(seconds);
+            SyncVar<uint> v = e switch { StatusEffect.Slow => SlowUntilTick, StatusEffect.Silence => SilenceUntilTick, _ => StunUntilTick };
+            if (until > v.Value)
+                v.Value = until;
+        }
 
         public int Level(ShopItemId id) => id == ShopItemId.Vitality ? VitalityLevel.Value : FirepowerLevel.Value;
 
@@ -99,6 +128,7 @@ namespace Jam.Gameplay
             History = GetComponent<PositionHistory>();
             Motor = GetComponent<PlatformerMotor>();
             Weapons = GetComponent<PlayerWeapons>();
+            Abilities = GetComponent<PlayerAbilities>();
             if (_body != null && _body.sprite == null)
                 _body.sprite = Fx.WhiteSprite;
         }
@@ -154,7 +184,12 @@ namespace Jam.Gameplay
         {
             if (!IsOwner || IsDead.Value || !MatchLive)
                 return;
-            Motor.Step(ScriptedInput ?? ReadKeyboard(), Time.deltaTime, ArenaPhysics);
+            MotorInput input = ScriptedInput ?? ReadKeyboard();
+            if (Stunned)
+                input = default;
+            else if (Slowed)
+                input.X *= Gameplay.Abilities.SlowFactor;
+            Motor.Step(input, Time.deltaTime, ArenaPhysics);
         }
 
         private static MotorInput ReadKeyboard()
@@ -203,6 +238,7 @@ namespace Jam.Gameplay
             Vector2 spawn = Match != null ? Match.SpawnPosition(Team.Value) : (Vector2)transform.position;
             Health.Value = MaxHp;
             IsDead.Value = false;
+            SlowUntilTick.Value = SilenceUntilTick.Value = StunUntilTick.Value = 0;
             ForceTeleport(spawn, correction: false);
         }
         #endregion

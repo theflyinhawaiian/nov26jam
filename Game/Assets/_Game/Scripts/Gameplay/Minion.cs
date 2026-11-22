@@ -123,6 +123,46 @@ namespace Jam.Gameplay
         private float _bobPhase;
         private bool _climbing;
         private readonly List<IDamageable> _scratch = new();
+        /// <summary>Server: Time.time until which an ability's slow / stun holds us.</summary>
+        private float _slowUntil, _stunUntil;
+
+        /// <summary>Server only: slowed (half speed) or stunned (no moving or attacking) for a while.</summary>
+        public void ApplyStatus(StatusEffect e, float seconds)
+        {
+            float until = Time.time + seconds;
+            if (e == StatusEffect.Slow)
+                _slowUntil = Mathf.Max(_slowUntil, until);
+            else if (e == StatusEffect.Stun)
+                _stunUntil = Mathf.Max(_stunUntil, until);
+            ObserversStatus(e, seconds);
+        }
+
+        /// <summary>Visual only: tint while slowed or stunned.</summary>
+        [ObserversRpc]
+        private void ObserversStatus(StatusEffect e, float seconds)
+        {
+            if (_body == null || Application.isBatchMode)
+                return;
+            _statusTintUntil = Time.time + seconds;
+            _statusTint = e == StatusEffect.Stun ? new Color(1f, 0.95f, 0.3f) : new Color(0.45f, 0.6f, 1f);
+        }
+
+        private float _statusTintUntil;
+        private Color _statusTint;
+
+        private void Update()
+        {
+            if (_body == null || _statusTintUntil <= 0f)
+                return;
+            Color baseColor = Color.Lerp(PlayerAvatar.TeamColor(Team.Value), Color.white, S.Paleness);
+            if (Time.time < _statusTintUntil)
+                _body.color = Color.Lerp(baseColor, _statusTint, 0.6f);
+            else
+            {
+                _body.color = baseColor;
+                _statusTintUntil = 0f;
+            }
+        }
 
         private void Awake()
         {
@@ -272,7 +312,8 @@ namespace Jam.Gameplay
             MotorInput input = default;
             bool wantsToClose = false;
 
-            if (Match.State.IsLive)
+            bool stunned = Time.time < _stunUntil;
+            if (Match.State.IsLive && !stunned)
             {
                 _retargetIn -= dt;
                 if (_retargetIn <= 0f || !StillValid(_target, pos))
@@ -310,6 +351,8 @@ namespace Jam.Gameplay
             input.X = KeepSpacing(pos, input.X, out bool blocked);
             // Only full-speed moves count (backing off to make space doesn't).
             _moveDir = Mathf.Abs(input.X) >= 0.99f ? Mathf.Sign(input.X) : 0f;
+            if (Time.time < _slowUntil)
+                input.X *= Abilities.SlowFactor;
 
             if (Flying)
             {

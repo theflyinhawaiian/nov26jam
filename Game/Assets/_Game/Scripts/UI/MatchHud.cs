@@ -10,7 +10,8 @@ namespace Jam.UI
     ///   a pip per standing tower, "SHIELDED" while towers stand, and the next-wave countdown
     /// - world: small health bars over damaged minions and towers
     /// - bottom-left: your health and money; a shop hint while in your spawn zone
-    /// - bottom-centre: weapon slots with the selected one highlighted and cooldowns filling
+    /// - bottom-centre: the gun and Q ability slots, cooldowns sweeping, STUNNED/SILENCED when blocked
+    /// - world: STUNNED / SILENCED / SLOWED over affected players
     /// - centre: respawn countdown while dead
     /// - screen edge: an arrow pointing at the opponent when they're off-screen
     /// Coordinates are in a 720-high reference space, like the rest of the UI.
@@ -46,7 +47,8 @@ namespace Jam.UI
             DrawNexusBars(screen, state, me, opp);
             DrawWaveTimer(screen, state);
             DrawHealth(screen, me);
-            DrawWeapons(screen, me.Weapons);
+            DrawWeapons(screen, me);
+            DrawStatusLabels(scale);
             if (me.IsDead.Value)
                 DrawRespawn(screen, me);
             else if (me.InSpawnZone && !shopOpen)
@@ -150,34 +152,62 @@ namespace Jam.UI
             Shadowed(new Rect(bar.x, bar.y - 24f, bar.width, 22f), $"${me.Money.Value}", _name);
         }
 
-        private void DrawWeapons(Vector2 screen, PlayerWeapons weapons)
+        /// <summary>Two slots: the gun (left mouse) and the Q ability, each with a cooldown sweep.</summary>
+        private void DrawWeapons(Vector2 screen, PlayerAvatar me)
         {
-            const float w = 150f, h = 46f, gap = 10f;
-            float total = weapons.Count * w + (weapons.Count - 1) * gap;
-            float x = (screen.x - total) * 0.5f;
+            const float w = 170f, h = 46f, gap = 10f;
+            float x = (screen.x - (w * 2f + gap)) * 0.5f;
             float y = screen.y - h - 16f;
-            for (int i = 0; i < weapons.Count; i++)
+            PlayerWeapons weapons = me.Weapons;
+            PlayerAbilities abilities = me.Abilities;
+
+            WeaponDefinition gun = weapons.Get(0);
+            Slot(new Rect(x, y, w, h), $"LMB  {gun.DisplayName}", weapons.CooldownRemaining(0), gun.Cooldown, me.Stunned ? "STUNNED" : null);
+            if (abilities != null)
             {
-                Rect r = new(x + i * (w + gap), y, w, h);
-                bool selected = i == weapons.CurrentIndex;
-                Fill(r, selected ? new Color(1f, 1f, 1f, 0.85f) : Frame);
-                Rect inner = Inset(r, selected ? 3f : 1f);
-                Fill(inner, new Color(0.08f, 0.08f, 0.1f, 0.85f));
-
-                // Cooldown: a dark sweep that empties left to right as the weapon becomes ready.
-                WeaponDefinition def = weapons.Get(i);
-                float remaining = weapons.CooldownRemaining(i);
-                if (remaining > 0f && def.Cooldown > 0f)
-                {
-                    float t = Mathf.Clamp01(remaining / def.Cooldown);
-                    Fill(new Rect(inner.xMax - inner.width * t, inner.y, inner.width * t, inner.height), new Color(0.45f, 0.45f, 0.5f, 0.6f));
-                }
-
-                Color old = GUI.contentColor;
-                GUI.contentColor = selected ? Color.white : new Color(0.7f, 0.7f, 0.75f);
-                GUI.Label(inner, $"{i + 1}  {def.DisplayName}", _slot);
-                GUI.contentColor = old;
+                string blocked = me.Stunned ? "STUNNED" : me.Silenced ? "SILENCED" : null;
+                Slot(new Rect(x + w + gap, y, w, h), $"Q  {abilities.CurrentDef.Name}", abilities.CooldownRemaining, abilities.CooldownTotal, blocked);
             }
+        }
+
+        private void Slot(Rect r, string label, float remaining, float total, string blocked)
+        {
+            Fill(r, Frame);
+            Rect inner = Inset(r, 1f);
+            Fill(inner, new Color(0.08f, 0.08f, 0.1f, 0.85f));
+            // Cooldown: a dark sweep that empties left to right as it becomes ready.
+            if (remaining > 0f && total > 0f)
+            {
+                float t = Mathf.Clamp01(remaining / total);
+                Fill(new Rect(inner.xMax - inner.width * t, inner.y, inner.width * t, inner.height), new Color(0.45f, 0.45f, 0.5f, 0.6f));
+            }
+            Color old = GUI.contentColor;
+            GUI.contentColor = blocked != null ? new Color(0.75f, 0.5f, 1f) : remaining > 0f ? new Color(0.7f, 0.7f, 0.75f) : Color.white;
+            GUI.Label(inner, blocked ?? (remaining > 0.05f && total >= 2f ? $"{label}  {Mathf.CeilToInt(remaining)}" : label), _slot);
+            GUI.contentColor = old;
+        }
+
+        /// <summary>STUNNED / SILENCED / SLOWED over any affected player, in pixel space.</summary>
+        private void DrawStatusLabels(float scale)
+        {
+            Camera cam = Camera.main;
+            if (cam == null)
+                return;
+            Matrix4x4 old = GUI.matrix;
+            foreach (PlayerAvatar a in new[] { PlayerAvatar.LocalPlayer, PlayerAvatar.RemotePlayer })
+            {
+                if (a == null || !a.IsSpawned || a.IsDead.Value)
+                    continue;
+                string text = a.Stunned ? "STUNNED" : a.Silenced ? "SILENCED" : a.Slowed ? "SLOWED" : null;
+                if (text == null)
+                    continue;
+                Vector3 sp = cam.WorldToScreenPoint(a.transform.position + Vector3.up * 1.5f);
+                if (sp.z < 0f)
+                    continue;
+                GUI.matrix = Matrix4x4.TRS(new Vector3(sp.x, Screen.height - sp.y, 0f), Quaternion.identity, new Vector3(scale, scale, 1f));
+                Shadowed(new Rect(-60f, -11f, 120f, 22f), text, _arrowLabel);
+            }
+            GUI.matrix = old;
         }
 
         private void DrawRespawn(Vector2 screen, PlayerAvatar me)
