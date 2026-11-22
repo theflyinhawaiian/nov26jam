@@ -83,9 +83,8 @@ namespace Jam.Net
             Vector2 dir = delta / length;
             float best = float.PositiveInfinity;
 
-            RaycastHit2D terrain = match.Physics.Raycast(from, dir, length, Layers.GroundMask);
-            if (terrain.collider != null)
-                best = terrain.distance;
+            if (Grenade.CastTerrain(match.Physics, from, to, out float terrain))
+                best = terrain;
 
             void Test(Rect box)
             {

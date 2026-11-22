@@ -69,7 +69,7 @@ y=0  └────────────────────────
 | Range | About 24 units (¾ of a screen), so the middle lane can't be sniped from spawn | Limited by its arc. Tune so speed² ÷ gravity is about 20 units. |
 | Damage | ~10 | ~40 at the centre, linear falloff, radius ~2.5 |
 | Cooldown | ~0.2 seconds | ~1.0 second |
-| Notes | Raycast blocked by solid ground, not by one-way platforms | Explodes on terrain, players or the nexus. **Damages the shooter too.** Despawns after 5 seconds. |
+| Notes | Raycast blocked by solid ground, not by one-way platforms | Explodes on terrain, players or the nexus, and on one-way platforms when falling onto them (rising grenades pass up through). **Damages the shooter too.** Despawns after 5 seconds. |
 
 **Nexus:** ~1500 HP, damaged by both weapons. Static and owned by the server. **Shielded** (takes no damage) while any of its team's towers stand.
 
@@ -237,7 +237,7 @@ Builds/Win/Game.exe -batchmode -nographics -client -smoketest -smokemode duel -s
 sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Game.exe
 ```
 
-Other bot options: `-smokemode attack|passive|selfnade|pads|cheat|watch` (`watch` stands at x = 20 on the enemy side, framing the enemy mid tower), `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
+Other bot options: `-smokemode attack|passive|selfnade|pads|cheat|watch|platnade` (`platnade` lobs grenades onto its mid-floor hatch at x = 20; `watch` stands at x = 20 on the enemy side, framing the enemy mid tower), `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
 
 Server test options: `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
 

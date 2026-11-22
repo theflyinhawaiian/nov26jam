@@ -77,10 +77,9 @@ namespace Jam.Gameplay
                 Vector2 prev = _simPos;
                 Vector2 next = Grenade.PositionAt(_origin, _velocity, _gravity, _age);
                 Vector2 delta = next - prev;
-                RaycastHit2D hit = _physics.Raycast(prev, delta.normalized, delta.magnitude, Layers.GroundMask);
-                if (hit.collider != null)
+                if (Grenade.CastTerrain(_physics, prev, next, out float hitDistance))
                 {
-                    next = hit.point;
+                    next = prev + delta.normalized * hitDistance;
                     _stuck = true;
                 }
                 _simPos = next;

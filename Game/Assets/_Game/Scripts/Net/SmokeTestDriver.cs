@@ -18,6 +18,8 @@ namespace Jam.Net
     ///   (checks the server's movement validation doesn't flag legal pad launches).
     /// - watch: walk to x = 20 on the enemy side and stand (with -smokeshot, frames the enemy
     ///   mid tower where our minions fight).
+    /// - platnade: walk to x = 26 on our side of the mid lane and lob grenades onto the one-way
+    ///   hatch at x = 20 (they should burst on it, at y = 36).
     /// - cheat: alternately teleport 15 units toward the enemy and fly straight up, to check
     ///   that the server's movement validation corrects it (corrections= in the result).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
@@ -257,6 +259,31 @@ namespace Jam.Net
                             _ => pos + Vector2.down * 2f,
                         };
                         a.Weapons.FireAt(target);
+                        _grenadesThrown++;
+                    }
+                    break;
+                }
+
+                case "platnade":
+                {
+                    // Walk to x = ±26 on our side of the mid lane, then lob grenades onto the
+                    // one-way hatch at ±20 (they should burst on it, not fall to the bottom lane).
+                    float side = a.Team.Value == 0 ? -1f : 1f;
+                    float targetX = side * 26f;
+                    float dir = Mathf.Sign(targetX - pos.x);
+                    bool arrived = Mathf.Abs(targetX - pos.x) < 0.5f;
+                    bool padAhead = false;
+                    foreach (float p in MidLanePadXs)
+                    {
+                        float ahead = (p - pos.x) * dir;
+                        if (ahead > 0f && ahead < 3f)
+                            padAhead = true;
+                    }
+                    a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = !arrived && padAhead && a.Motor.Grounded, JumpHeld = !arrived };
+                    a.Weapons.Select(1);
+                    if (arrived && a.Motor.Grounded && a.Weapons.CooldownRemaining(1) <= 0f)
+                    {
+                        a.Weapons.FireAt(new Vector2(side * 20f, ArenaLayout.MidFloorY + 1f));
                         _grenadesThrown++;
                     }
                     break;
