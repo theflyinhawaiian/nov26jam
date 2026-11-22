@@ -75,9 +75,9 @@ namespace Jam.Gameplay
         /// (stacked) scene; a client only ever has one arena loaded.
         /// </summary>
         public PhysicsScene2D ArenaPhysics =>
-            gameObject.scene.name == NetConfig.ArenaScene
+            Arenas.IsArena(gameObject.scene)
                 ? gameObject.scene.GetPhysicsScene2D()
-                : UnityEngine.SceneManagement.SceneManager.GetSceneByName(NetConfig.ArenaScene).GetPhysicsScene2D();
+                : Arenas.LoadedScene().GetPhysicsScene2D();
 
         private void Awake()
         {
@@ -236,7 +236,7 @@ namespace Jam.Gameplay
                 Debug.Log($"[Movement] Ignored debug teleport from {Nickname.Value}: release server.");
                 return;
             }
-            if (!IsDead.Value && ArenaLayout.Bounds.Contains(position))
+            if (!IsDead.Value && Arenas.For(gameObject).Bounds.Contains(position))
                 ForceTeleport(position, correction: false);
         }
         #endregion

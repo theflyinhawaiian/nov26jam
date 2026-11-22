@@ -221,7 +221,7 @@ namespace Jam.Gameplay
 
         private Vector2 ClampToArena(Vector2 pos)
         {
-            Rect r = ArenaLayout.Bounds;
+            Rect r = Arenas.For(gameObject).Bounds;
             Vector2 half = _size * 0.5f;
             return new Vector2(
                 Mathf.Clamp(pos.x, r.xMin + half.x, r.xMax - half.x),

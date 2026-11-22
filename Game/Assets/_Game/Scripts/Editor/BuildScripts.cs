@@ -13,7 +13,7 @@ namespace Jam.EditorTools
     public static class BuildScripts
     {
         private static readonly string BuildsRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "../../Builds"));
-        private static readonly string[] Scenes = { ProjectBuilder.BootScenePath, ProjectBuilder.ArenaScenePath };
+        private static readonly string[] Scenes = { ProjectBuilder.BootScenePath, ProjectBuilder.ArenaScenePath, ProjectBuilder.TwoLaneScenePath };
 
         [MenuItem("nov26jam/Build/Dedicated Server (Linux)")]
         public static void BuildServer()

@@ -42,6 +42,8 @@ namespace Jam.Net
         private readonly bool[] _teamSendsMinions = { true, true };
         /// <summary>Debug: -waveseconds N on the server.</summary>
         private float _waveSeconds = LaneDirector.DefaultWaveSeconds;
+        /// <summary>Arena every match is played in. -arena TwoLane|Arena on the server (scene name).</summary>
+        private ArenaDef _arena = Arenas.TwoLane;
 
         private void Awake()
         {
@@ -55,6 +57,16 @@ namespace Jam.Net
                 _teamSendsMinions[1] = v is "red" or "both";
                 Debug.Log($"[MatchManager] Minion waves from: blue={_teamSendsMinions[0]} red={_teamSendsMinions[1]}");
             }
+            i = System.Array.IndexOf(args, "-arena");
+            if (i >= 0 && i + 1 < args.Length)
+            {
+                ArenaDef a = Arenas.ByName(args[i + 1]);
+                if (a != null)
+                    _arena = a;
+                else
+                    Debug.LogWarning($"[MatchManager] Unknown arena '{args[i + 1]}'");
+            }
+            Debug.Log($"[MatchManager] Arena: {_arena.Scene}");
             i = System.Array.IndexOf(args, "-waveseconds");
             if (i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out float secs) && secs >= 1f)
@@ -107,7 +119,7 @@ namespace Jam.Net
         {
             if (m.Ended || !m.SceneLoaded || _minionPrefab == null)
                 return;
-            NetworkObject nob = Instantiate(_minionPrefab, LaneLayout.MinionSpawn(team, lane), Quaternion.identity);
+            NetworkObject nob = Instantiate(_minionPrefab, m.Arena.MinionSpawn(team, lane), Quaternion.identity);
             Minion minion = nob.GetComponent<Minion>();
             minion.Team.Value = team;
             minion.Type.Value = type;
@@ -198,12 +210,12 @@ namespace Jam.Net
         #region Match lifecycle
         public Match CreateMatch(params NetworkConnection[] players)
         {
-            Match m = new Match(++_nextMatchId, players);
+            Match m = new Match(++_nextMatchId, players, _arena);
             _matches[m.Id] = m;
             foreach (NetworkConnection p in players)
                 _matchByConn[p] = m;
 
-            SceneLoadData sld = new SceneLoadData(NetConfig.ArenaScene);
+            SceneLoadData sld = new SceneLoadData(m.Arena.Scene);
             sld.Options.AllowStacking = true;
             sld.Options.LocalPhysics = LocalPhysicsMode.Physics2D;
             sld.Options.AutomaticallyUnload = true;
@@ -230,6 +242,7 @@ namespace Jam.Net
             m.CacheSceneObjects();
 
             NetworkObject stateNob = Instantiate(_matchStatePrefab);
+            stateNob.GetComponent<MatchState>().Arena = m.Arena;
             _nm.ServerManager.Spawn(stateNob, null, m.Scene);
             m.State = stateNob.GetComponent<MatchState>();
             // Deferred: this fires from inside damage code that may be iterating the match's lists.

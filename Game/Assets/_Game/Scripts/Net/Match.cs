@@ -23,6 +23,8 @@ namespace Jam.Net
         /// <summary>Waves and tower fire; created once the arena has loaded.</summary>
         public LaneDirector Lanes;
         public Scene Scene;
+        /// <summary>Which arena this match is played in (its scene is a copy of Arena.Scene).</summary>
+        public readonly ArenaDef Arena;
         public MatchState State;
         public bool Ended;
         /// <summary>Time.unscaledTime when CreateMatch ran; used for the load timeout.</summary>
@@ -32,9 +34,10 @@ namespace Jam.Net
         private readonly Nexus[] _nexuses = new Nexus[2];
         private readonly Tower[] _towers = new Tower[LaneLayout.TowerCount];
 
-        public Match(int id, NetworkConnection[] players)
+        public Match(int id, NetworkConnection[] players, ArenaDef arena)
         {
             Id = id;
+            Arena = arena;
             Players = players;
         }
 

@@ -30,7 +30,6 @@ namespace Jam.Net
     public class SmokeTestDriver : MonoBehaviour
     {
         // Mid-lane jump pads (see ArenaBuilder); the attack bot hops over them.
-        private static readonly float[] MidLanePadXs = { -50f, -38f, -14f, -2f, 2f, 14f, 38f, 50f };
 
         private NetworkManager _nm;
         private float _duration = 20f;
@@ -180,6 +179,7 @@ namespace Jam.Net
             if (a.IsSpawned)
                 _minHealth = Mathf.Min(_minHealth, a.Health.Value);
             Vector2 pos = a.transform.position;
+            ArenaDef arena = Arenas.For(a.gameObject);
             if (!a.MatchLive && (a.State == null || a.State.Winner.Value < 0))
             {
                 _preLivePos ??= pos;
@@ -273,7 +273,7 @@ namespace Jam.Net
                     float dir = Mathf.Sign(targetX - pos.x);
                     bool arrived = Mathf.Abs(targetX - pos.x) < 0.5f;
                     bool padAhead = false;
-                    foreach (float p in MidLanePadXs)
+                    foreach (float p in arena.BasePadXs)
                     {
                         float ahead = (p - pos.x) * dir;
                         if (ahead > 0f && ahead < 3f)
@@ -283,7 +283,7 @@ namespace Jam.Net
                     a.Weapons.Select(1);
                     if (arrived && a.Motor.Grounded && a.Weapons.CooldownRemaining(1) <= 0f)
                     {
-                        a.Weapons.FireAt(new Vector2(side * 20f, ArenaLayout.MidFloorY + 1f));
+                        a.Weapons.FireAt(new Vector2(side * 20f, arena.BaseFloorY + 1f));
                         _grenadesThrown++;
                     }
                     break;
@@ -296,7 +296,7 @@ namespace Jam.Net
                     float dir = Mathf.Sign(targetX - pos.x);
                     bool arrived = Mathf.Abs(targetX - pos.x) < 1f;
                     bool padAhead = false;
-                    foreach (float p in MidLanePadXs)
+                    foreach (float p in arena.BasePadXs)
                     {
                         float ahead = (p - pos.x) * dir;
                         if (ahead > 0f && ahead < 3f)
@@ -305,8 +305,8 @@ namespace Jam.Net
                     bool jump = !arrived && padAhead && a.Motor.Grounded;
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = jump, JumpHeld = !arrived };
                     a.Weapons.Select(0);
-                    if (Mathf.Abs(enemySide * 60f - pos.x) < 22f)
-                        a.Weapons.FireAt(new Vector2(enemySide * 60f, ArenaLayout.MidFloorY + 3f));
+                    if (Mathf.Abs(enemySide * arena.NexusX - pos.x) < 22f)
+                        a.Weapons.FireAt(new Vector2(enemySide * arena.NexusX, arena.BaseFloorY + 3f));
                     break;
                 }
 

@@ -37,7 +37,7 @@ namespace Jam.Gameplay
 
         private Vector3 Clamp(Vector3 p)
         {
-            Rect r = ArenaLayout.Bounds;
+            Rect r = Arenas.For(_target.gameObject).Bounds;
             float halfH = _camera.orthographicSize;
             float halfW = halfH * _camera.aspect;
             p.x = r.width > halfW * 2f ? Mathf.Clamp(p.x, r.xMin + halfW, r.xMax - halfW) : r.center.x;

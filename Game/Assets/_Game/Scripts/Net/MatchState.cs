@@ -66,11 +66,24 @@ namespace Jam.Net
             ? (float)(((long)StartTick.Value - (long)TimeManager.Tick) * TimeManager.TickDelta)
             : CountdownSeconds;
 
+        /// <summary>TowerHealth value for a tower whose lane this arena doesn't have: not alive, not destroyed, not drawn.</summary>
+        public const int TowerNotInPlay = -1;
+
+        public static bool TowerInPlay(int health) => health != TowerNotInPlay;
+
+        private ArenaDef _arena;
+        /// <summary>The arena this match is played in (this object lives in the match's arena scene).</summary>
+        public ArenaDef Arena
+        {
+            get => _arena ??= Arenas.For(gameObject);
+            set => _arena = value; // server: set before spawning
+        }
+
         public override void OnStartServer()
         {
             TowerHealth.Clear();
             for (int i = 0; i < LaneLayout.TowerCount; i++)
-                TowerHealth.Add(TowerMaxHealth);
+                TowerHealth.Add(Arena.HasLane[(int)LaneLayout.TowerLane(i)] ? TowerMaxHealth : TowerNotInPlay);
         }
 
         public override void OnStartClient() => Local = this;
@@ -124,14 +137,14 @@ namespace Jam.Net
         {
             int team = LaneLayout.TowerTeam(index);
             Lane lane = LaneLayout.TowerLane(index);
-            Vector2 muzzle = LaneLayout.TowerCenter(team, lane) + Vector2.up * (LaneLayout.TowerHeight * 0.4f);
+            Vector2 muzzle = Arena.TowerMuzzle(team, lane);
             Fx.Tracer(muzzle, to, Color.Lerp(PlayerAvatar.TeamColor(team), Color.white, 0.4f), 0.12f, 0.16f);
         }
 
         [ObserversRpc]
         private void ObserversTowerDestroyed(int index)
         {
-            Vector2 c = LaneLayout.TowerCenter(LaneLayout.TowerTeam(index), LaneLayout.TowerLane(index));
+            Vector2 c = Arena.TowerCenter(LaneLayout.TowerTeam(index), LaneLayout.TowerLane(index));
             Fx.Explosion(c, 3f);
         }
     }

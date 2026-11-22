@@ -8,7 +8,7 @@ namespace Jam.Net
     /// <summary>
     /// Server-side lane logic for one match, run every tick by MatchManager:
     /// - Waves: when play starts and every 30 s after (debug: -waveseconds N on the server),
-    ///   each team sends WavePerLane (melee, flyer, ranged, flyer) down each lane, a little apart.
+    ///   each team sends WavePerLane (melee, flyer, ranged, flyer) down each lane the arena has, a little apart.
     /// - Towers: each standing tower fires once per TowerCooldown at a target in range on its
     ///   level with a clear line: an enemy player who just hurt a friendly player near the
     ///   tower first, then the nearest enemy minion, then an enemy player. It sticks with its
@@ -82,7 +82,8 @@ namespace Jam.Net
                 if (!_teamSendsMinions[team])
                     continue;
                 for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
-                    for (int k = 0; k < WavePerLane.Length; k++)
+                    if (_match.Arena.HasLane[lane])
+                        for (int k = 0; k < WavePerLane.Length; k++)
                         _pendingSpawns.Add((now + k * SpawnSpacing, team, (Lane)lane, WavePerLane[k]));
             }
             Debug.Log($"[Lanes] Match {_match.Id}: wave {_waves}, {_match.Minions.Count} minions alive before it");

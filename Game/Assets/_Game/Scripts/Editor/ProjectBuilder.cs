@@ -30,7 +30,8 @@ namespace Jam.EditorTools
         private const string PrefabsDir = Root + "/Prefabs";
         private const string DataDir = Root + "/Data";
         public const string BootScenePath = ScenesDir + "/Boot.unity";
-        public const string ArenaScenePath = ScenesDir + "/" + NetConfig.ArenaScene + ".unity";
+        public const string ArenaScenePath = ScenesDir + "/Arena.unity";
+        public const string TwoLaneScenePath = ScenesDir + "/TwoLane.unity";
         private const string PlayerPrefabPath = PrefabsDir + "/Player.prefab";
         private const string MatchStatePrefabPath = PrefabsDir + "/MatchState.prefab";
         private const string MinionPrefabPath = PrefabsDir + "/Minion.prefab";
@@ -52,13 +53,14 @@ namespace Jam.EditorTools
             NetworkObject matchState = BuildMatchStatePrefab();
             NetworkObject minion = BuildMinionPrefab();
             SinglePrefabObjects prefabs = BuildPrefabCollection(player, matchState, minion);
-            ArenaBuilder.Build(ArenaScenePath);
+            BuildArenas();
             BuildBootScene(player, matchState, minion, prefabs);
 
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene(BootScenePath, true),
                 new EditorBuildSettingsScene(ArenaScenePath, true),
+                new EditorBuildSettingsScene(TwoLaneScenePath, true),
             };
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Server, ScriptingImplementation.Mono2x);
 
@@ -69,11 +71,17 @@ namespace Jam.EditorTools
             Debug.Log("[ProjectBuilder] Rebuilt scenes and prefabs.");
         }
 
-        [MenuItem("nov26jam/Rebuild Arena Only")]
+        [MenuItem("nov26jam/Rebuild Arenas Only")]
         public static void RebuildArena()
         {
             SetupLayers();
+            BuildArenas();
+        }
+
+        private static void BuildArenas()
+        {
             ArenaBuilder.Build(ArenaScenePath);
+            ArenaBuilder.BuildTwoLane(TwoLaneScenePath);
         }
 
         private static void SetupLayers()

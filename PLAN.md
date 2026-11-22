@@ -52,6 +52,25 @@ y=0  └────────────────────────
 - **Moving between levels:** drop through one-way platforms going down (down + jump), jump pads going up. Put pads near each base and near the centre so defenders can rotate as fast as attackers.
 - **Greybox only:** solid ground, one-way platforms, and jump pads as triggers.
 
+**Second arena: TwoLane** (`TwoLane.unity`, **128 × 54**). It has only two lanes. The nexuses and player spawns are in the jungle between them. **This is the server's default arena;** start the server with `-arena Arena` to play the original.
+
+```
+y=54 ┌──────────────────────────────────────────────┐
+     │=============== UPPER LANE ===================│  towers at ±32
+y=36 │====== floor, hatches at ±14 and ±38 =========│
+     │[NEXUS]::: JUNGLE: ledges, pads, cover :[NEXUS]│  nexus + spawn
+y=18 │====== floor, hatches at ±20 and ±44 =========│
+     │=============== LOWER LANE ===================│  towers at ±34
+y=0  └──────────────────────────────────────────────┘
+```
+
+- **Lower lane to jungle:** high pads under the jungle-floor hatches. Lower-lane minions ride the pad at ±44.
+- **Jungle to upper lane:** high pads under the upper-floor hatches, or two staircases of one-way ledges (4.5 units apart) on each side.
+- **Upper lane to jungle:** drop through a hatch. Upper-lane minions drop at ±38.
+- **Nexus shield:** each team has two towers, and the shield drops once both have fallen.
+- **Code:** each arena's positions (lane floors, towers, minion routes, base floor) are in `ArenaDef` (`Shared/ArenaDef.cs`). Runtime code looks up the arena from the scene it's in. `ArenaBuilder.BuildTwoLane` generates the scene; **nov26jam → Rebuild Arenas Only** regenerates both arenas.
+- **Lanes an arena lacks:** their towers have health `-1` (`MatchState.TowerNotInPlay`). They send no minions and show no HUD pip.
+
 ## 4. Gameplay systems
 
 **Player**
@@ -194,6 +213,7 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 - Fixed on the way: rifle shots and grenades could damage your own nexus.
 - Added after: minions keep their spacing instead of stacking, half of each wave flies, the walkers split into melee and ranged, and flyers change height to pass each other. Verified with the same one-sided test (flyers reach the mid lane from both flanks and hit the nexus) and in screenshots. Queued minions can't all reach a tower at once, so one-sided debug pushes take longer than before.
 - Left: playtest and tune (minion damage, tower damage and HP, wave size and interval), deploy.
+- Added a second arena, TwoLane (see §3), and made it the default. Verified with a one-sided push: both lanes reach the jungle and hit the nexus once the two enemy towers fall. The classic arena still passes the same test with `-arena Arena`.
 
 **Local testing:**
 - Multiplayer Play Mode: the main editor runs the server plus a client; a virtual player is the second client.
@@ -239,7 +259,7 @@ sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Ga
 
 Other bot options: `-smokemode attack|passive|selfnade|pads|cheat|watch|platnade` (`platnade` lobs grenades onto its mid-floor hatch at x = 20; `watch` stands at x = 20 on the enemy side, framing the enemy mid tower), `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
 
-Server test options: `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
+Server test options: `-arena TwoLane|Arena` (which arena matches use; default `TwoLane`), `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
 
 ## 10. Risks
 

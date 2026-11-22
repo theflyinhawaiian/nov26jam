@@ -70,8 +70,6 @@ namespace Jam.Gameplay
         private const float BobFollowSpeed = 3f;
         /// <summary>A flyer changing slot holds its horizontal position until within this of the new height.</summary>
         private const float SlotSettle = 0.4f;
-        /// <summary>Flyers stay this side of the nexus face (58.5) so they never pass through it.</summary>
-        private const float FlyerMaxX = 57.5f;
 
         public readonly SyncVar<int> Team = new();
         public readonly SyncVar<int> Health = new(TypeStats[0].Health);
@@ -85,6 +83,8 @@ namespace Jam.Gameplay
 
         /// <summary>Server only.</summary>
         public Match Match { get; set; }
+        /// <summary>Server only: the match's arena (routes and floors).</summary>
+        private ArenaDef Arena => Match != null ? Match.Arena : Arenas.For(gameObject);
         public Lane Lane { get; set; }
 
         public PlatformerMotor Motor { get; private set; }
@@ -136,7 +136,7 @@ namespace Jam.Gameplay
         public override void OnStartServer()
         {
             Health.Value = MaxHp;
-            _levelY = LaneLayout.FloorY(Lane);
+            _levelY = Arena.FloorY(Lane);
             _bobPhase = Random.Range(0f, Mathf.PI * 2f);
             BuildRoute();
             TimeManager.OnTick += ServerTick;
@@ -183,15 +183,15 @@ namespace Jam.Gameplay
             switch (Lane)
             {
                 case Lane.Top:
-                    _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * LaneLayout.TopDropX });
-                    _route.Add(new Step { Kind = StepKind.Drop, Value = ArenaLayout.MidFloorY + 3f });
+                    _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * Arena.TopDropX });
+                    _route.Add(new Step { Kind = StepKind.Drop, Value = Arena.BaseFloorY + 3f });
                     break;
                 case Lane.Bottom:
-                    _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * LaneLayout.BottomPadX });
-                    _route.Add(new Step { Kind = StepKind.Pad, Value = LaneLayout.HighPadApex });
+                    _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * Arena.BottomPadX });
+                    _route.Add(new Step { Kind = StepKind.Pad, Value = Arena.HighPadApex });
                     break;
             }
-            _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * LaneLayout.NexusHoldX });
+            _route.Add(new Step { Kind = StepKind.Walk, Value = enemy * Arena.NexusHoldX });
             _route.Add(new Step { Kind = StepKind.Hold });
             _step = 0;
         }
@@ -214,22 +214,22 @@ namespace Jam.Gameplay
                     break;
                 case StepKind.Drop when Flying:
                 case StepKind.Pad when Flying:
-                    // Straight down/up the hatch column to cruise height over the mid lane.
-                    _levelY = ArenaLayout.MidFloorY;
+                    // Straight down/up the hatch column to cruise height over the base floor.
+                    _levelY = Arena.BaseFloorY;
                     _slot = DefaultSlot;
                     _climbing = true;
                     if (Mathf.Abs(pos.y - SlotY(_slot)) < 0.3f)
                     {
                         _climbing = false;
                         _step++;
-                        LogMilestone($"flew into the mid lane at {pos}");
+                        LogMilestone($"flew to the base floor at {pos}");
                     }
                     break;
                 case StepKind.Drop:
                     if (pos.y < s.Value)
                     {
                         _step++;
-                        LogMilestone($"dropped into the mid lane at {pos}");
+                        LogMilestone($"dropped to the base floor at {pos}");
                     }
                     else if (Motor.Grounded)
                     {
@@ -468,7 +468,7 @@ namespace Jam.Gameplay
             }
             pos.x += Mathf.Clamp(x, -1f, 1f) * FlySpeed * dt;
             pos.y = Mathf.MoveTowards(pos.y, targetY, speedY * dt);
-            float maxX = Mathf.Approximately(_levelY, ArenaLayout.MidFloorY) ? FlyerMaxX : ArenaLayout.HalfWidth - 1f;
+            float maxX = Mathf.Approximately(_levelY, Arena.BaseFloorY) ? Arena.FlyerMaxX : Arena.HalfWidth - 1f;
             pos.x = Mathf.Clamp(pos.x, -maxX, maxX);
             transform.position = pos;
         }

@@ -85,7 +85,7 @@ namespace Jam.Net
             for (int i = UnitySceneManager.sceneCount - 1; i >= 0; i--)
             {
                 var scene = UnitySceneManager.GetSceneAt(i);
-                if (scene.name == NetConfig.ArenaScene && scene.isLoaded)
+                if (Arenas.IsArena(scene) && scene.isLoaded)
                     UnitySceneManager.UnloadSceneAsync(scene);
             }
         }

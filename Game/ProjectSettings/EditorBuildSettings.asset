@@ -11,5 +11,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Game/Scenes/Arena.unity
     guid: 1d3a6f8d06ec79a45bd29450af2760ae
+  - enabled: 1
+    path: Assets/_Game/Scenes/TwoLane.unity
+    guid: a2e60a876a2c4714894672172ed0d9de
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}

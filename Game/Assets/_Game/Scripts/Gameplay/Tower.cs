@@ -22,9 +22,11 @@ namespace Jam.Gameplay
         /// <summary>Server only: the match whose arena copy this tower is in.</summary>
         public Match Match { get; set; }
         public int Index => LaneLayout.TowerIndex(Team, Lane);
-        public Rect Rect => LaneLayout.TowerRect(Team, Lane);
+        private ArenaDef _arena;
+        public ArenaDef Arena => _arena ??= Arenas.For(gameObject);
+        public Rect Rect => Arena.TowerRect(Team, Lane);
         /// <summary>Where shots come from: near the top.</summary>
-        public Vector2 Muzzle => LaneLayout.TowerCenter(Team, Lane) + Vector2.up * (LaneLayout.TowerHeight * 0.4f);
+        public Vector2 Muzzle => Arena.TowerMuzzle(Team, Lane);
 
         private MatchState State => Match != null ? Match.State : MatchState.Local;
         public bool Alive => State != null && State.TowerHealth.Count > Index && State.TowerHealth[Index] > 0;
@@ -61,8 +63,8 @@ namespace Jam.Gameplay
                 ? Color.Lerp(new Color(0.2f, 0.2f, 0.2f), _baseColor, 0.35f + 0.65f * t)
                 : new Color(0.15f, 0.15f, 0.15f, 0.5f);
             transform.localScale = new Vector3(LaneLayout.TowerWidth, hp > 0 ? LaneLayout.TowerHeight : 0.8f, 1f);
-            Vector2 c = LaneLayout.TowerCenter(Team, Lane);
-            transform.position = hp > 0 ? c : new Vector2(c.x, LaneLayout.FloorY(Lane) + 0.4f);
+            Vector2 c = Arena.TowerCenter(Team, Lane);
+            transform.position = hp > 0 ? c : new Vector2(c.x, Arena.FloorY(Lane) + 0.4f);
         }
     }
 }
