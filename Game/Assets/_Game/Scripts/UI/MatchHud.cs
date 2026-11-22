@@ -68,16 +68,13 @@ namespace Jam.UI
                 Bar(bar, fill, shielded ? Color.Lerp(PlayerAvatar.TeamColor(team), Color.white, 0.45f) : PlayerAvatar.TeamColor(team), fromRight: team == 0);
                 GUI.Label(bar, shielded ? $"{hp}  SHIELDED" : hp.ToString(), _barText);
 
-                // A pip per lane tower in play (bottom, mid, top), dim once destroyed.
+                // A pip per lane tower (bottom, mid, top), dim once destroyed.
                 const float pip = 12f, pipGap = 5f;
-                for (int lane = 0, slot = 0; lane < LaneLayout.LaneCount; lane++)
+                for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
                 {
                     int i = LaneLayout.TowerIndex(team, (Lane)lane);
-                    if (i >= state.TowerHealth.Count || !MatchState.TowerInPlay(state.TowerHealth[i]))
-                        continue;
-                    bool up = state.TowerHealth[i] > 0;
-                    float px = team == 0 ? bar.x + slot * (pip + pipGap) : bar.xMax - (slot + 1) * (pip + pipGap) + pipGap;
-                    slot++;
+                    bool up = i < state.TowerHealth.Count && state.TowerHealth[i] > 0;
+                    float px = team == 0 ? bar.x + lane * (pip + pipGap) : bar.xMax - (lane + 1) * (pip + pipGap) + pipGap;
                     Fill(new Rect(px, bar.yMax + 5f, pip, pip), up ? PlayerAvatar.TeamColor(team) : new Color(1f, 1f, 1f, 0.15f));
                 }
 

@@ -66,18 +66,6 @@ namespace Jam.Net
             ? (float)(((long)StartTick.Value - (long)TimeManager.Tick) * TimeManager.TickDelta)
             : CountdownSeconds;
 
-        /// <summary>TowerHealth value for a tower whose lane is out of play: not alive, not destroyed, not drawn.</summary>
-        public const int TowerNotInPlay = -1;
-
-        public static bool TowerInPlay(int health) => health != TowerNotInPlay;
-
-        /// <summary>Server, before play: take a lane out of the match (both teams' towers on it).</summary>
-        public void ServerRemoveLane(Lane lane)
-        {
-            for (int team = 0; team < 2; team++)
-                TowerHealth[LaneLayout.TowerIndex(team, lane)] = TowerNotInPlay;
-        }
-
         public override void OnStartServer()
         {
             TowerHealth.Clear();
