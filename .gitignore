@@ -28,6 +28,8 @@ Game/Assets/StreamingAssets/aa*
 # Build outputs (kept outside the Unity project)
 Builds/
 
+CLAUDE.md
+
 # Terraform
 infra/.terraform/
 infra/*.tfstate
