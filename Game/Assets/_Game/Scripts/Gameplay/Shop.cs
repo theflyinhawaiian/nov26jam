@@ -27,7 +27,7 @@ namespace Jam.Gameplay
         public const int TowerBounty = 100;
 
         /// <summary>Money each player starts a match with (the server's -startmoney overrides it).</summary>
-        public const int StartingMoney = 100;
+        public const int StartingMoney = 40;
 
         public const int VitalityHealth = 25;
         /// <summary>Temporary health from Armor: soaks damage before health; gone when used up or on death.</summary>
