@@ -33,6 +33,7 @@ namespace Jam.EditorTools
         public const string ArenaScenePath = ScenesDir + "/" + NetConfig.ArenaScene + ".unity";
         private const string PlayerPrefabPath = PrefabsDir + "/Player.prefab";
         private const string MatchStatePrefabPath = PrefabsDir + "/MatchState.prefab";
+        private const string MinionPrefabPath = PrefabsDir + "/Minion.prefab";
         private const string WeaponsDir = DataDir + "/Weapons";
         private const string GamePrefabsPath = DataDir + "/GamePrefabs.asset";
         private const string SceneConditionPath = "Assets/FishNet/Runtime/Observing/Conditions/ScriptableObjects/SceneCondition.asset";
@@ -49,9 +50,10 @@ namespace Jam.EditorTools
             WeaponDefinition[] weapons = { EnsureRifle(), EnsureGrenadeLauncher() };
             NetworkObject player = BuildPlayerPrefab(weapons);
             NetworkObject matchState = BuildMatchStatePrefab();
-            SinglePrefabObjects prefabs = BuildPrefabCollection(player, matchState);
+            NetworkObject minion = BuildMinionPrefab();
+            SinglePrefabObjects prefabs = BuildPrefabCollection(player, matchState, minion);
             ArenaBuilder.Build(ArenaScenePath);
-            BuildBootScene(player, matchState, prefabs);
+            BuildBootScene(player, matchState, minion, prefabs);
 
             EditorBuildSettings.scenes = new[]
             {
@@ -172,6 +174,43 @@ namespace Jam.EditorTools
             return saved.GetComponent<NetworkObject>();
         }
 
+        /// <summary>Server-driven lane minion: server-authoritative NetworkTransform, motor with pads off.</summary>
+        private static NetworkObject BuildMinionPrefab()
+        {
+            GameObject root = new("Minion");
+            root.AddComponent<NetworkObject>();
+
+            NetworkTransform nt = root.AddComponent<NetworkTransform>();
+            SetFields(nt, so =>
+            {
+                so.FindProperty("_clientAuthoritative").boolValue = false;
+                so.FindProperty("_synchronizeRotation").boolValue = false;
+                so.FindProperty("_synchronizeScale").boolValue = false;
+                so.FindProperty("_enableTeleport").boolValue = true;
+                so.FindProperty("_teleportThreshold").floatValue = 4f;
+            });
+
+            // Minion's [RequireComponent] adds PlatformerMotor and PositionHistory.
+            Minion minion = root.AddComponent<Minion>();
+            SetFields(root.GetComponent<PlatformerMotor>(), so =>
+            {
+                so.FindProperty("_size").vector2Value = new Vector2(0.75f, 0.95f);
+                so.FindProperty("_runSpeed").floatValue = 4f;
+            });
+
+            GameObject body = new("Body");
+            body.transform.SetParent(root.transform, false);
+            body.transform.localScale = new Vector3(0.8f, 1f, 1f);
+            SpriteRenderer sr = body.AddComponent<SpriteRenderer>();
+            sr.sprite = GreyboxSprite.Get();
+            sr.sortingOrder = 4;
+            SetFields(minion, so => so.FindProperty("_body").objectReferenceValue = sr);
+
+            GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, MinionPrefabPath);
+            Object.DestroyImmediate(root);
+            return saved.GetComponent<NetworkObject>();
+        }
+
         private static SinglePrefabObjects BuildPrefabCollection(params NetworkObject[] networkPrefabs)
         {
             SinglePrefabObjects collection = AssetDatabase.LoadAssetAtPath<SinglePrefabObjects>(GamePrefabsPath);
@@ -191,7 +230,7 @@ namespace Jam.EditorTools
             return collection;
         }
 
-        private static void BuildBootScene(NetworkObject player, NetworkObject matchState, PrefabObjects prefabs)
+        private static void BuildBootScene(NetworkObject player, NetworkObject matchState, NetworkObject minion, PrefabObjects prefabs)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -234,6 +273,7 @@ namespace Jam.EditorTools
             {
                 so.FindProperty("_playerPrefab").objectReferenceValue = player;
                 so.FindProperty("_matchStatePrefab").objectReferenceValue = matchState;
+                so.FindProperty("_minionPrefab").objectReferenceValue = minion;
             });
             nmGo.AddComponent<DebugHud>();
             nmGo.AddComponent<GameMenu>();

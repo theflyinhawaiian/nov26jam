@@ -71,14 +71,18 @@ y=0  └────────────────────────
 | Cooldown | ~0.2 seconds | ~1.0 second |
 | Notes | Raycast blocked by solid ground, not by one-way platforms | Explodes on terrain, players or the nexus. **Damages the shooter too.** Despawns after 5 seconds. |
 
-**Nexus:** ~1500 HP, damaged by both weapons. Static and owned by the server.
+**Nexus:** ~1500 HP, damaged by both weapons. Static and owned by the server. **Shielded** (takes no damage) while any of its team's towers stand.
+
+**Towers:** one per lane per team (6 in all), at |x| = 32 (bottom lane: 34, to clear the cover at 30). 800 HP, range 11 on its own level, one shot a second: 20 damage to minions, 12 to players. Target order: an enemy player who just (within 2 s) hurt a friendly player near the tower, then its current target, then the nearest enemy minion, then an enemy player. Towers have no collider: friendly players and minions walk through, and enemy minions stop to attack them. Players and grenades damage enemy towers.
+
+**Minions:** every 30 s from the start of play, each team sends 3 minions down each lane (60 HP, 4 u/s, a short-range shot of 8 damage every second). They fight the nearest enemy minion or player on their level within 9 units, otherwise enemy towers and the (unshielded) nexus. Routes: mid walks to the enemy nexus. Top walks to the top-floor hatch at |x| = 38 near the enemy base and drops into the mid lane. Bottom walks to the high pad at |x| = 44 and rides it up into the mid lane. Enemy towers are on every route, so minions destroy them before reaching the nexus; minions that get there while it's shielded hold position and fight. Players and grenades damage enemy minions; friendly ones are immune.
 
 **Match flow**
 - Menu → nickname → **Find match** → waiting screen → arena with a 3-second countdown → play.
 - No time limit.
 - Ends when a nexus is destroyed, or when a player disconnects (the other player wins). Then results, then back to the menu.
 
-**HUD:** your HP, both nexus HP bars, current weapon and cooldown, respawn countdown, and an arrow at the screen edge pointing to the off-screen opponent.
+**HUD:** your HP, both nexus HP bars (with "SHIELDED" and a marker per standing tower), next-wave countdown, current weapon and cooldown, respawn countdown, an arrow at the screen edge pointing to the off-screen opponent, and small health bars over damaged minions and towers.
 
 **Camera:** follows the player smoothly and stops at the arena edges.
 
@@ -184,6 +188,12 @@ FishNet and Bayou are vendored into `Assets/FishNet` from their official `.unity
 
 **M6 · Ship and playtest.** Deploy, playtest, tune, then destroy at the end of the month.
 
+**M7 · Lanes: minions and towers.** Towers, minion waves, the nexus shield, team-aware damage (see §4).
+- Done and verified locally with bots. With only one team sending waves (`-minionteams`, `-waveseconds 6`), its minions destroy all three enemy towers and then the nexus, from both sides; top and bottom minions reach the mid lane and hit the nexus from there. With both teams at the normal 30 s, waves meet and wipe each other out, and attacking bots are killed by towers and minions but can't damage the shielded nexus.
+- Code: `LaneLayout` (positions and routes), `Minion` (server-driven, reuses `PlatformerMotor` with pads off), `Tower` and `Nexus` (scene markers; health in `MatchState`), `LaneDirector` (waves and tower fire, per match), `IDamageable` / `DamageSource` (one damage path for players, minions, towers and nexuses).
+- Fixed on the way: rifle shots and grenades could damage your own nexus.
+- Left: playtest and tune (minion damage, tower damage and HP, wave size and interval), deploy.
+
 **Local testing:**
 - Multiplayer Play Mode: the main editor runs the server plus a client; a virtual player is the second client.
 - FishNet's latency simulator for lag.
@@ -228,6 +238,8 @@ sleep 30; grep -h "SMOKE RESULT" Builds/a.log Builds/b.log; taskkill //F //IM Ga
 
 Other bot options: `-smokemode attack|passive|selfnade|pads|cheat`, `-smokeshot <dir>` (windowed only: saves screenshots of the HUD), `-smokerequeue` (queue again after each match), `-latency <ms>` (simulated lag).
 
+Server test options: `-minionteams blue|red|both|none` (which teams send waves) and `-waveseconds <n>` (wave interval). For example, `-minionteams blue -waveseconds 6` with two `passive` bots: Blue's minions should win the match on their own in about two minutes.
+
 ## 10. Risks
 
 | Risk | What to do |
@@ -241,4 +253,4 @@ Other bot options: `-smokemode attack|passive|selfnade|pads|cheat`, `-smokeshot 
 
 ## 11. Left for later
 
-Room codes, towers, minion waves, jungle monsters, spawn protection, more weapons, reconnect, art and sound.
+Room codes, jungle monsters, spawn protection, more weapons, reconnect, art and sound.

@@ -21,6 +21,7 @@ namespace Jam.Net
     {
         [SerializeField] private NetworkObject _playerPrefab;
         [SerializeField] private NetworkObject _matchStatePrefab;
+        [SerializeField] private NetworkObject _minionPrefab;
 
         [Tooltip("Ticks subtracted from the shooter's LastPacketTick when rewinding for hitscan. Tuned from the M1 debug readout.")]
         [SerializeField] private float _rewindOffsetTicks = 0f;
@@ -37,10 +38,30 @@ namespace Jam.Net
         private int _nextMatchId;
         private readonly List<(Match match, int winner)> _pendingEnds = new();
         private readonly List<Match> _timedOut = new();
+        /// <summary>Which teams send minion waves. Debug: -minionteams blue|red|both|none on the server.</summary>
+        private readonly bool[] _teamSendsMinions = { true, true };
+        /// <summary>Debug: -waveseconds N on the server.</summary>
+        private float _waveSeconds = LaneDirector.DefaultWaveSeconds;
 
         private void Awake()
         {
             _nm = GetComponent<NetworkManager>();
+            string[] args = System.Environment.GetCommandLineArgs();
+            int i = System.Array.IndexOf(args, "-minionteams");
+            if (i >= 0 && i + 1 < args.Length)
+            {
+                string v = args[i + 1].ToLowerInvariant();
+                _teamSendsMinions[0] = v is "blue" or "both";
+                _teamSendsMinions[1] = v is "red" or "both";
+                Debug.Log($"[MatchManager] Minion waves from: blue={_teamSendsMinions[0]} red={_teamSendsMinions[1]}");
+            }
+            i = System.Array.IndexOf(args, "-waveseconds");
+            if (i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float secs) && secs >= 1f)
+            {
+                _waveSeconds = secs;
+                Debug.Log($"[MatchManager] Minion waves every {secs}s");
+            }
         }
 
         private void Start()
@@ -52,6 +73,7 @@ namespace Jam.Net
             _nm.SceneManager.OnLoadEnd += OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd += OnClientPresenceChangeEnd;
             _nm.SceneManager.OnUnloadEnd += OnUnloadEnd;
+            _nm.TimeManager.OnTick += OnTick;
         }
 
         private void OnDestroy()
@@ -65,6 +87,33 @@ namespace Jam.Net
             _nm.SceneManager.OnLoadEnd -= OnLoadEnd;
             _nm.SceneManager.OnClientPresenceChangeEnd -= OnClientPresenceChangeEnd;
             _nm.SceneManager.OnUnloadEnd -= OnUnloadEnd;
+            _nm.TimeManager.OnTick -= OnTick;
+        }
+
+        private readonly List<Match> _tickMatches = new();
+
+        private void OnTick()
+        {
+            if (!_nm.IsServerStarted)
+                return;
+            // Copy: a tick can end a match (nexus destroyed is deferred, but be safe).
+            _tickMatches.Clear();
+            _tickMatches.AddRange(_matches.Values);
+            foreach (Match m in _tickMatches)
+                m.Lanes?.Tick();
+        }
+
+        private void SpawnMinion(Match m, int team, Lane lane)
+        {
+            if (m.Ended || !m.SceneLoaded || _minionPrefab == null)
+                return;
+            NetworkObject nob = Instantiate(_minionPrefab, LaneLayout.MinionSpawn(team, lane), Quaternion.identity);
+            Minion minion = nob.GetComponent<Minion>();
+            minion.Team.Value = team;
+            minion.Lane = lane;
+            minion.Match = m;
+            _nm.ServerManager.Spawn(nob, null, m.Scene);
+            m.Minions.Add(minion);
         }
 
         private void Update()
@@ -184,6 +233,9 @@ namespace Jam.Net
             m.State = stateNob.GetComponent<MatchState>();
             // Deferred: this fires from inside damage code that may be iterating the match's lists.
             m.State.ServerNexusDestroyed += winner => _pendingEnds.Add((m, winner));
+            m.State.ServerTowerDestroyed += index =>
+                Debug.Log($"[Lanes] Match {m.Id}: {(LaneLayout.TowerTeam(index) == 0 ? "Blue" : "Red")} {LaneLayout.TowerLane(index)} tower destroyed");
+            m.Lanes = new LaneDirector(m, SpawnMinion, _teamSendsMinions, _waveSeconds);
 
             // Clients that already finished loading (e.g. clientHost) won't raise a presence event later.
             foreach (NetworkConnection p in m.Players)
@@ -247,6 +299,10 @@ namespace Jam.Net
                 if (a != null && a.IsSpawned)
                     _nm.ServerManager.Despawn(a.NetworkObject);
             m.Avatars.Clear();
+            foreach (Minion minion in m.Minions.ToArray())
+                if (minion != null && minion.IsSpawned)
+                    _nm.ServerManager.Despawn(minion.NetworkObject);
+            m.Minions.Clear();
 
             foreach (NetworkConnection p in m.Players)
             {

@@ -221,10 +221,7 @@ namespace Jam.Gameplay
             double rewindTick = shooterTick - mm.RewindOffsetTicks;
             HitscanResult result = LagCompensation.Raycast(match, _avatar, origin, direction, w.Range, rewindTick);
 
-            if (result.Target != null)
-                result.Target.TakeDamage(w.Damage);
-            else if (result.Terrain != null && match.State != null && match.TryGetNexus(result.Terrain, out Nexus nexus))
-                match.State.DamageNexus(nexus.Team, w.Damage);
+            result.Target?.ApplyDamage(w.Damage, DamageSource.FromPlayer(_avatar));
 
             ObserversTracer(origin, result.EndPoint);
 
@@ -257,7 +254,7 @@ namespace Jam.Gameplay
                 }
             }
 
-            TargetFireDiagnostics(Owner, result.Target != null, rewound, error, bestOffset, bestError, (int)(TimeManager.Tick - pt.Tick));
+            TargetFireDiagnostics(Owner, result.Target is PlayerAvatar, rewound, error, bestOffset, bestError, (int)(TimeManager.Tick - pt.Tick));
         }
 
         [ObserversRpc(ExcludeOwner = true)]
@@ -349,12 +346,12 @@ namespace Jam.Gameplay
                 PlayerAvatar ignore = armed ? null : _avatar;
 
                 bool expired = p.Age >= w.MaxLifetime;
-                if (LagCompensation.Sweep(match, p.LastPosition, next, w.ProjectileRadius, ignore, out Vector2 impact) || expired)
+                if (LagCompensation.Sweep(match, p.LastPosition, next, w.ProjectileRadius, ignore, _avatar.Team.Value, out Vector2 impact) || expired)
                 {
                     bool dud = !armed && !expired;
                     ObserversExplode(p.Id, impact, dud ? 0f : w.ExplosionRadius);
                     if (!dud && !match.Ended)
-                        Combat.Explode(match, impact, w);
+                        Combat.Explode(match, impact, w, DamageSource.FromPlayer(_avatar));
                     _serverProjectiles.RemoveAt(i);
                     continue;
                 }

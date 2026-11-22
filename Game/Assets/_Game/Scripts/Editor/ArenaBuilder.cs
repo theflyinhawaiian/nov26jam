@@ -118,6 +118,22 @@ namespace Jam.EditorTools
                 spawn.AddComponent<SpawnPoint>().Team = team;
             }
 
+            // One tower per lane per team (positions in LaneLayout). Visual only: no collider,
+            // so friendly players and minions walk through; enemy minions stop to attack it.
+            Transform towers = Group("Towers");
+            for (int team = 0; team < 2; team++)
+            {
+                for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
+                {
+                    Rect r = LaneLayout.TowerRect(team, (Lane)lane);
+                    Color c = Color.Lerp(TeamColors[team], new Color(0.2f, 0.2f, 0.22f), 0.35f);
+                    GameObject go = Block(towers, $"Tower {(team == 0 ? "Blue" : "Red")} {(Lane)lane}", r, c, 2, layer: -1);
+                    Tower tower = go.AddComponent<Tower>();
+                    tower.Team = team;
+                    tower.Lane = (Lane)lane;
+                }
+            }
+
             EditorSceneManager.SaveScene(scene, scenePath);
         }
 

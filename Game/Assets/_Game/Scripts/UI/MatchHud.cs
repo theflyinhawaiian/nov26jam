@@ -6,7 +6,9 @@ namespace Jam.UI
 {
     /// <summary>
     /// Player-facing in-match HUD (IMGUI, greybox), drawn by GameMenu while in a match:
-    /// - top: both nexus health bars (Blue left, Red right, like the arena), with player names
+    /// - top: both nexus health bars (Blue left, Red right, like the arena), with player names,
+    ///   a pip per standing tower, "SHIELDED" while towers stand, and the next-wave countdown
+    /// - world: small health bars over damaged minions and towers
     /// - bottom-left: your health
     /// - bottom-centre: weapon slots with the selected one highlighted and cooldowns filling
     /// - centre: respawn countdown while dead
@@ -26,7 +28,7 @@ namespace Jam.UI
         private static readonly Color Track = new(0f, 0f, 0f, 0.55f);
         private static readonly Color Frame = new(1f, 1f, 1f, 0.25f);
 
-        private GUIStyle _barText, _name, _slot, _respawn, _respawnSmall, _arrowLabel;
+        private GUIStyle _barText, _name, _slot, _respawn, _respawnSmall, _arrowLabel, _waveLabel;
         private Texture2D _arrow;
 
         /// <param name="screen">Screen size in reference units.</param>
@@ -40,7 +42,9 @@ namespace Jam.UI
             EnsureStyles();
             PlayerAvatar opp = PlayerAvatar.RemotePlayer;
 
+            DrawUnitBars(scale);
             DrawNexusBars(screen, state, me, opp);
+            DrawWaveTimer(screen, state);
             DrawHealth(screen, me);
             DrawWeapons(screen, me.Weapons);
             if (me.IsDead.Value)
@@ -60,14 +64,72 @@ namespace Jam.UI
                 int hp = state.NexusHealth(team);
                 float fill = (float)hp / MatchState.NexusMaxHealth;
                 // Bars drain toward the middle of the screen.
-                Bar(bar, fill, PlayerAvatar.TeamColor(team), fromRight: team == 0);
-                GUI.Label(bar, hp.ToString(), _barText);
+                bool shielded = state.NexusShielded(team);
+                Bar(bar, fill, shielded ? Color.Lerp(PlayerAvatar.TeamColor(team), Color.white, 0.45f) : PlayerAvatar.TeamColor(team), fromRight: team == 0);
+                GUI.Label(bar, shielded ? $"{hp}  SHIELDED" : hp.ToString(), _barText);
+
+                // A pip per lane tower (bottom, mid, top), dim once destroyed.
+                const float pip = 12f, pipGap = 5f;
+                for (int lane = 0; lane < LaneLayout.LaneCount; lane++)
+                {
+                    int i = LaneLayout.TowerIndex(team, (Lane)lane);
+                    bool up = i < state.TowerHealth.Count && state.TowerHealth[i] > 0;
+                    float px = team == 0 ? bar.x + lane * (pip + pipGap) : bar.xMax - (lane + 1) * (pip + pipGap) + pipGap;
+                    Fill(new Rect(px, bar.yMax + 5f, pip, pip), up ? PlayerAvatar.TeamColor(team) : new Color(1f, 1f, 1f, 0.15f));
+                }
 
                 PlayerAvatar owner = me.Team.Value == team ? me : opp;
                 string who = owner == null ? "" : owner == me ? $"{owner.Nickname.Value} (you)" : owner.Nickname.Value;
                 _name.alignment = team == 0 ? TextAnchor.LowerRight : TextAnchor.LowerLeft;
                 Shadowed(new Rect(x, y - 24f, NexusBarWidth, 22f), $"{(team == 0 ? "BLUE" : "RED")} NEXUS  {who}".Trim(), _name);
             }
+        }
+
+        private void DrawWaveTimer(Vector2 screen, MatchState state)
+        {
+            if (state.NextWaveTick.Value == 0)
+                return;
+            Rect r = new(screen.x * 0.5f - 100f, 52f, 200f, 22f);
+            Shadowed(r, $"Next wave {Mathf.CeilToInt(state.NextWaveIn)}s", _waveLabel);
+        }
+
+        /// <summary>Small world-space bars over damaged minions and towers, in pixel space.</summary>
+        private void DrawUnitBars(float scale)
+        {
+            Camera cam = Camera.main;
+            MatchState state = MatchState.Local;
+            if (cam == null || state == null)
+                return;
+            Matrix4x4 old = GUI.matrix;
+            GUI.matrix = Matrix4x4.identity;
+
+            foreach (Minion m in Minion.Active)
+            {
+                if (m == null || m.Health.Value >= Minion.MaxHealth || m.Health.Value <= 0)
+                    continue;
+                WorldBar(cam, (Vector2)m.transform.position + Vector2.up * 0.8f, 30f * scale, 4f * scale,
+                    (float)m.Health.Value / Minion.MaxHealth, PlayerAvatar.TeamColor(m.Team.Value));
+            }
+            for (int i = 0; i < state.TowerHealth.Count; i++)
+            {
+                int hp = state.TowerHealth[i];
+                if (hp <= 0 || hp >= MatchState.TowerMaxHealth)
+                    continue;
+                int team = LaneLayout.TowerTeam(i);
+                Vector2 top = LaneLayout.TowerCenter(team, LaneLayout.TowerLane(i)) + Vector2.up * (LaneLayout.TowerHeight * 0.5f + 0.6f);
+                WorldBar(cam, top, 60f * scale, 6f * scale, (float)hp / MatchState.TowerMaxHealth, PlayerAvatar.TeamColor(team));
+            }
+            GUI.matrix = old;
+        }
+
+        private static void WorldBar(Camera cam, Vector2 world, float width, float height, float fill, Color color)
+        {
+            Vector3 sp = cam.WorldToScreenPoint(world);
+            if (sp.z < 0f || sp.x < -width || sp.x > Screen.width + width || sp.y < -height || sp.y > Screen.height + height)
+                return;
+            Rect r = new(sp.x - width * 0.5f, Screen.height - sp.y - height * 0.5f, width, height);
+            Fill(r, new Color(0f, 0f, 0f, 0.6f));
+            Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01(fill), r.height), color);
         }
 
         private void DrawHealth(Vector2 screen, PlayerAvatar me)
@@ -234,6 +296,8 @@ namespace Jam.UI
             _respawnSmall.normal.textColor = Color.white;
             _arrowLabel = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _arrowLabel.normal.textColor = Color.white;
+            _waveLabel = new GUIStyle(GUI.skin.label) { fontSize = 15, alignment = TextAnchor.MiddleCenter };
+            _waveLabel.normal.textColor = new Color(0.85f, 0.85f, 0.9f);
         }
         #endregion
     }

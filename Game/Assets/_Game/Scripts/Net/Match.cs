@@ -17,6 +17,11 @@ namespace Jam.Net
         public readonly int Id;
         public readonly NetworkConnection[] Players;
         public readonly List<PlayerAvatar> Avatars = new();
+        public readonly List<Minion> Minions = new();
+        /// <summary>Route milestones already logged (minion debug output, once each).</summary>
+        public readonly HashSet<string> LoggedMilestones = new();
+        /// <summary>Waves and tower fire; created once the arena has loaded.</summary>
+        public LaneDirector Lanes;
         public Scene Scene;
         public MatchState State;
         public bool Ended;
@@ -25,6 +30,7 @@ namespace Jam.Net
 
         private readonly Vector2[] _spawns = new Vector2[2];
         private readonly Nexus[] _nexuses = new Nexus[2];
+        private readonly Tower[] _towers = new Tower[LaneLayout.TowerCount];
 
         public Match(int id, NetworkConnection[] players)
         {
@@ -39,6 +45,7 @@ namespace Jam.Net
         public bool AllPlayersSpawned => Avatars.Count == Players.Length;
         public Vector2 SpawnPosition(int team) => _spawns[Mathf.Clamp(team, 0, 1)];
         public IReadOnlyList<Nexus> Nexuses => _nexuses;
+        public IReadOnlyList<Tower> Towers => _towers;
 
         /// <summary>Call once the arena scene has loaded.</summary>
         public void CacheSceneObjects()
@@ -48,8 +55,38 @@ namespace Jam.Net
                 foreach (SpawnPoint sp in root.GetComponentsInChildren<SpawnPoint>())
                     _spawns[Mathf.Clamp(sp.Team, 0, 1)] = sp.transform.position;
                 foreach (Nexus n in root.GetComponentsInChildren<Nexus>())
+                {
                     _nexuses[Mathf.Clamp(n.Team, 0, 1)] = n;
+                    n.Match = this;
+                }
+                foreach (Tower t in root.GetComponentsInChildren<Tower>())
+                {
+                    _towers[t.Index] = t;
+                    t.Match = this;
+                }
             }
+        }
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with everything that can be damaged in this match:
+        /// players, minions, towers, nexuses (alive or not; check Attackable). A snapshot, so
+        /// damage that kills or despawns while iterating it is safe.
+        /// </summary>
+        public void CollectTargets(List<IDamageable> into)
+        {
+            into.Clear();
+            foreach (PlayerAvatar a in Avatars)
+                if (a != null)
+                    into.Add(a);
+            foreach (Minion m in Minions)
+                if (m != null)
+                    into.Add(m);
+            foreach (Tower t in _towers)
+                if (t != null)
+                    into.Add(t);
+            foreach (Nexus n in _nexuses)
+                if (n != null)
+                    into.Add(n);
         }
 
         public bool TryGetNexus(Collider2D collider, out Nexus nexus)

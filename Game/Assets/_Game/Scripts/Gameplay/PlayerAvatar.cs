@@ -13,7 +13,7 @@ namespace Jam.Gameplay
     /// platformer movement (PlatformerMotor + NetworkTransform). Weapons live in PlayerWeapons.
     /// </summary>
     [RequireComponent(typeof(PositionHistory), typeof(PlatformerMotor), typeof(PlayerWeapons))]
-    public class PlayerAvatar : NetworkBehaviour
+    public class PlayerAvatar : NetworkBehaviour, IDamageable
     {
         public const int MaxHealth = 100;
         public const float RespawnSeconds = 10f;
@@ -38,6 +38,14 @@ namespace Jam.Gameplay
         public static int CorrectionsReceived { get; private set; }
 
         private MovementValidator _movement;
+
+        /// <summary>Server only: Time.time when this player last damaged an enemy player (towers aggro on it).</summary>
+        public float LastHitEnemyPlayerAt { get; private set; } = float.NegativeInfinity;
+
+        int IDamageable.TeamId => Team.Value;
+        TargetKind IDamageable.Kind => TargetKind.Player;
+        bool IDamageable.Attackable => IsSpawned && !IsDead.Value;
+        Rect IDamageable.Hitbox => HitboxAt(transform.position);
 
         public PositionHistory History { get; private set; }
         public PlatformerMotor Motor { get; private set; }
@@ -151,11 +159,13 @@ namespace Jam.Gameplay
         }
 
         #region Health (server)
-        [Server]
-        public void TakeDamage(int amount)
+        /// <summary>Server only. Players take damage from anyone, including their own grenades.</summary>
+        public void ApplyDamage(int amount, DamageSource source)
         {
-            if (IsDead.Value || amount <= 0)
+            if (!IsServerStarted || IsDead.Value || amount <= 0)
                 return;
+            if (source.Player != null && source.Player != this && source.Team != Team.Value)
+                source.Player.LastHitEnemyPlayerAt = Time.time;
             Health.Value = Mathf.Max(0, Health.Value - amount);
             ObserversDamageFlash();
             if (Health.Value == 0)

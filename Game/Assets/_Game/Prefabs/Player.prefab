@@ -181,6 +181,7 @@ MonoBehaviour:
   _jumpBufferTime: 0.12
   _dropThroughTime: 0.25
   Velocity: {x: 0, y: 0}
+  AutoPads: 1
 --- !u!114 &5779633150495609191
 MonoBehaviour:
   m_ObjectHideFlags: 0

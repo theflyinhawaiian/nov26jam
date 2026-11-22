@@ -37,6 +37,8 @@ namespace Jam.Gameplay
         private const float MaxStep = 1f / 30f;
 
         public Vector2 Velocity;
+        /// <summary>Launch automatically on touching a jump pad (players). Minions turn this off and call Launch on their route.</summary>
+        public bool AutoPads = true;
         public bool Grounded { get; private set; }
         public float Gravity => _gravity;
         public float RunSpeed => _runSpeed;
@@ -56,6 +58,15 @@ namespace Jam.Gameplay
         private readonly Collider2D[] _overlaps = new Collider2D[4];
 
         public float PadLaunchSpeed(float apexHeight) => Mathf.Sqrt(2f * _gravity * apexHeight);
+
+        /// <summary>Jump-pad style launch to the given apex height.</summary>
+        public void Launch(float apexHeight)
+        {
+            Velocity.y = PadLaunchSpeed(apexHeight);
+            _jumpCuttable = false;
+            Grounded = false;
+            _lastGroundedTime = float.NegativeInfinity;
+        }
 
         public void Teleport(Vector2 position)
         {
@@ -115,7 +126,8 @@ namespace Jam.Gameplay
             pos = ClampToArena(pos);
             transform.position = pos;
 
-            CheckJumpPads(physics, pos, now);
+            if (AutoPads)
+                CheckJumpPads(physics, pos, now);
         }
 
         private Vector2 MoveX(PhysicsScene2D physics, Vector2 pos, float dx)

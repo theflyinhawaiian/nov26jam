@@ -5,18 +5,19 @@ namespace Jam.Net
 {
     public struct HitscanResult
     {
-        public PlayerAvatar Target;
-        /// <summary>Terrain/structure the shot stopped on, when it didn't hit a player.</summary>
+        /// <summary>What the shot hit and can damage: an enemy player, minion, tower or nexus.</summary>
+        public IDamageable Target;
+        /// <summary>Terrain the shot stopped on, when it didn't hit a target.</summary>
         public Collider2D Terrain;
         public Vector2 EndPoint;
-        /// <summary>Where the target was after rewinding (valid when Target != null).</summary>
-        public Vector2 RewoundTargetPosition;
     }
 
     /// <summary>
     /// Server-side hit tests. Terrain is tested with a raycast in the match's own physics
-    /// scene (static, so no rewind needed); players are tested analytically as AABBs, at
-    /// historical positions for hitscan and current positions for projectiles.
+    /// scene (static, so no rewind needed); players and minions are tested analytically as
+    /// AABBs, at historical positions for hitscan and current positions for projectiles.
+    /// Towers have no collider and are tested as static AABBs. Only enemy minions and
+    /// structures are hit; shots pass through friendly ones.
     /// </summary>
     public static class LagCompensation
     {
@@ -25,27 +26,42 @@ namespace Jam.Net
             direction.Normalize();
             float best = range;
             HitscanResult result = default;
+            int team = shooter.Team.Value;
 
             RaycastHit2D terrain = match.Physics.Raycast(origin, direction, range, Layers.GroundMask);
             if (terrain.collider != null)
             {
                 best = terrain.distance;
                 result.Terrain = terrain.collider;
+                // The nexus is solid terrain; an enemy one is also a target.
+                if (match.TryGetNexus(terrain.collider, out Nexus nexus) && nexus.Team != team)
+                    result.Target = nexus;
             }
 
             foreach (PlayerAvatar avatar in match.Avatars)
             {
                 if (avatar == null || avatar == shooter || !avatar.IsSpawned || avatar.IsDead.Value)
                     continue;
-
                 Vector2 pos = avatar.History.GetPosition(rewindTick);
                 if (RayIntersectsRect(origin, direction, avatar.HitboxAt(pos), out float distance) && distance < best)
-                {
-                    best = distance;
-                    result.Target = avatar;
-                    result.Terrain = null;
-                    result.RewoundTargetPosition = pos;
-                }
+                    (best, result.Target, result.Terrain) = (distance, avatar, null);
+            }
+
+            foreach (Minion minion in match.Minions)
+            {
+                if (minion == null || minion.Team.Value == team || !((IDamageable)minion).Attackable)
+                    continue;
+                Vector2 pos = minion.History.GetPosition(rewindTick);
+                if (RayIntersectsRect(origin, direction, minion.HitboxAt(pos), out float distance) && distance < best)
+                    (best, result.Target, result.Terrain) = (distance, minion, null);
+            }
+
+            foreach (Tower tower in match.Towers)
+            {
+                if (tower == null || tower.Team == team || !tower.Alive)
+                    continue;
+                if (RayIntersectsRect(origin, direction, tower.Rect, out float distance) && distance < best)
+                    (best, result.Target, result.Terrain) = (distance, tower, null);
             }
 
             result.EndPoint = origin + direction * best;
@@ -54,9 +70,10 @@ namespace Jam.Net
 
         /// <summary>
         /// Sweeps a projectile from <paramref name="from"/> to <paramref name="to"/>. Returns the
-        /// first impact point against terrain or a (current-position) player hitbox.
+        /// first impact point against terrain, a (current-position) player hitbox, or an enemy
+        /// minion or standing enemy tower.
         /// </summary>
-        public static bool Sweep(Match match, Vector2 from, Vector2 to, float radius, PlayerAvatar ignore, out Vector2 impact)
+        public static bool Sweep(Match match, Vector2 from, Vector2 to, float radius, PlayerAvatar ignore, int team, out Vector2 impact)
         {
             Vector2 delta = to - from;
             float length = delta.magnitude;
@@ -70,16 +87,23 @@ namespace Jam.Net
             if (terrain.collider != null)
                 best = terrain.distance;
 
-            foreach (PlayerAvatar avatar in match.Avatars)
+            void Test(Rect box)
             {
-                if (avatar == null || avatar == ignore || !avatar.IsSpawned || avatar.IsDead.Value)
-                    continue;
-                Rect box = avatar.HitboxAt(avatar.transform.position);
                 box.min -= Vector2.one * radius;
                 box.max += Vector2.one * radius;
                 if (RayIntersectsRect(from, dir, box, out float d) && d <= length && d < best)
                     best = d;
             }
+
+            foreach (PlayerAvatar avatar in match.Avatars)
+                if (avatar != null && avatar != ignore && avatar.IsSpawned && !avatar.IsDead.Value)
+                    Test(avatar.HitboxAt(avatar.transform.position));
+            foreach (Minion minion in match.Minions)
+                if (minion != null && minion.Team.Value != team && ((IDamageable)minion).Attackable)
+                    Test(minion.HitboxAt(minion.transform.position));
+            foreach (Tower tower in match.Towers)
+                if (tower != null && tower.Team != team && tower.Alive)
+                    Test(tower.Rect);
 
             if (float.IsPositiveInfinity(best))
                 return false;
