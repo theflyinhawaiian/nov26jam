@@ -195,7 +195,7 @@ namespace Jam.Net
                     }
                 }
                 _money = a.Money.Value;
-                _upgrades = $"gun={(a.Weapons.HasGun ? a.Weapons.Get(a.Weapons.Gun.Value).DisplayName : "none")} vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} armor={a.Armor.Value} q={a.Abilities.Current.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
+                _upgrades = $"gun={(a.Weapons.HasGun ? a.Weapons.Get(a.Weapons.Gun.Value).DisplayName : "none")} vit{a.VitalityLevel.Value}/fire{a.FirepowerLevel.Value} maxHp={a.MaxHp} hp={a.Health.Value} armor={a.Armor.Value} q={a.Abilities.Current.Value} e={a.Abilities.Second.Value} offers={a.Abilities.OfferA.Value}/{a.Abilities.OfferB.Value}" +
                             $"{(a.Slowed ? " SLOWED" : "")}{(a.Silenced ? " SILENCED" : "")}{(a.Stunned ? " STUNNED" : "")}";
             }
 
@@ -303,7 +303,7 @@ namespace Jam.Net
                     bool hop = Mathf.Repeat(t, 2f) < Time.deltaTime * 1.5f;
                     a.ScriptedInput = new MotorInput { X = runDir, JumpPressed = hop, JumpHeld = hop };
 
-                    if (a.Abilities.CooldownRemaining <= 0f)
+                    if (a.Abilities.CooldownRemaining(0) <= 0f)
                     {
                         // Cycle: forward-up, at the floor 2 units ahead, straight down at our feet.
                         Vector2 target = (_grenadesThrown % 3) switch
@@ -328,7 +328,7 @@ namespace Jam.Net
                     bool arrived = Mathf.Abs(targetX - pos.x) < 0.5f;
                     bool padAhead = HopAhead(arena, pos, dir);
                     a.ScriptedInput = new MotorInput { X = arrived ? 0f : dir, JumpPressed = !arrived && padAhead && a.Motor.Grounded, JumpHeld = !arrived };
-                    if (arrived && a.Motor.Grounded && a.Abilities.CooldownRemaining <= 0f)
+                    if (arrived && a.Motor.Grounded && a.Abilities.CooldownRemaining(0) <= 0f)
                     {
                         a.Abilities.TryUse(new Vector2(side * 20f, arena.BaseFloorY + 1f));
                         _grenadesThrown++;
@@ -338,10 +338,11 @@ namespace Jam.Net
 
                 case "abilities":
                 {
-                    // Shop for -smokeability (buying it when offered, rerolling otherwise), then
-                    // walk to rifle range of the opponent and use Q on them whenever it's ready.
+                    // Shop for -smokeability (buying it when offered, rerolling otherwise; it goes
+                    // on E, which starts empty), then walk to rifle range of the opponent and use
+                    // it on them whenever it's ready.
                     PlayerAbilities ab = a.Abilities;
-                    bool shopping = ab.Current.Value != _wantAbility && a.InSpawnZone && a.MatchLive && t < 30f;
+                    bool shopping = !ab.Holds(_wantAbility) && a.InSpawnZone && a.MatchLive && t < 30f;
                     if (shopping)
                     {
                         a.ScriptedInput = new MotorInput();
@@ -349,10 +350,16 @@ namespace Jam.Net
                         {
                             _nextBuy = Time.time + 0.5f;
                             int slot = ab.OfferA.Value == _wantAbility ? 0 : ab.OfferB.Value == _wantAbility ? 1 : -1;
-                            if (slot >= 0)
+                            if (a.DevMovement)
+                            {
+                                // Dev nickname: the dev shop sets it directly, free.
+                                Debug.Log($"[Smoke] Dev-setting E to {_wantAbility}");
+                                ab.ServerDevSetAbility(1, _wantAbility);
+                            }
+                            else if (slot >= 0)
                             {
                                 Debug.Log($"[Smoke] Buying ability {_wantAbility} (${a.Money.Value})");
-                                ab.ServerBuy((byte)slot);
+                                ab.ServerBuy((byte)slot, (byte)(ab.EmptySlot >= 0 ? ab.EmptySlot : 0));
                             }
                             else
                             {
@@ -369,12 +376,13 @@ namespace Jam.Net
                     if (opp == null || opp.IsDead.Value || Mathf.Abs(pos.x) > 20f)
                         break;
                     // Only the Heal bot's opponent needs to take damage; otherwise keep both alive.
-                    if (opp.Abilities != null && opp.Abilities.Current.Value == AbilityId.Heal)
+                    if (opp.Abilities != null && opp.Abilities.Holds(AbilityId.Heal))
                     {
                         a.Weapons.FireAt(opp.transform.position);
                     }
-                    if (ab.CooldownRemaining <= 0f && ab.TryUse(opp.transform.position))
-                        Debug.Log($"[Smoke] Used {ab.Current.Value} at {opp.transform.position} from {pos}");
+                    int useSlot = ab.SlotOf(_wantAbility);
+                    if (useSlot >= 0 && ab.CooldownRemaining(useSlot) <= 0f && ab.TryUse(opp.transform.position, useSlot))
+                        Debug.Log($"[Smoke] Used {_wantAbility} ({PlayerAbilities.SlotKeys[useSlot]}) at {opp.transform.position} from {pos}");
                     break;
                 }
 

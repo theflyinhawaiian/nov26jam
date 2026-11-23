@@ -184,7 +184,7 @@ namespace Jam.Gameplay
 
         /// <summary>The grenade is the Grenade ability: only while we hold it and aren't silenced.</summary>
         private bool GrenadeAllowed() =>
-            _avatar.Abilities != null && _avatar.Abilities.Current.Value == AbilityId.Grenade && !_avatar.Silenced;
+            _avatar.Abilities != null && _avatar.Abilities.Holds(AbilityId.Grenade) && !_avatar.Silenced;
 
         /// <summary>Shared server-side checks. May correct the origin to the server's view of the shooter.</summary>
         private bool ServerValidateFire(byte index, WeaponKind kind, ref Vector2 origin, out WeaponDefinition weapon, out Match match)

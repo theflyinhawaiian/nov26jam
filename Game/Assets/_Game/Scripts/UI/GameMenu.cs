@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FishNet.Managing;
 using FishNet.Transporting;
 using Jam.Gameplay;
@@ -38,7 +39,7 @@ namespace Jam.UI
 
         private readonly MatchHud _hud = new();
         private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel, _solidPanel,
-            _rowLabel, _rowLabelHover, _rowButton, _tile, _currentTile, _tileName, _barLabel, _tooltipStyle;
+            _rowLabel, _rowLabelHover, _rowButton, _tile, _currentTile, _tileName, _barLabel, _tooltipStyle, _devNote, _devOption;
         private readonly BackdropBlur _blur = new();
 
         /// <summary>Smoke tests (-smokeshop): open the shop whenever it's available, for screenshots.</summary>
@@ -104,9 +105,15 @@ namespace Jam.UI
             bool inMatch = _nm.IsClientStarted && _status == MatchStatus.InMatch;
             Keyboard k = Keyboard.current;
             PlayerAvatar me = PlayerAvatar.LocalPlayer;
-            bool canShop = inMatch && me != null && me.IsSpawned && !me.IsDead.Value && me.InSpawnZone;
+            // The dev nickname can shop anywhere.
+            bool canShop = inMatch && me != null && me.IsSpawned && !me.IsDead.Value && (me.InSpawnZone || me.DevMovement);
             if (!canShop)
                 _shopOpen = false;
+            if (!_shopOpen)
+            {
+                _replaceOffer = -1;
+                _devDropdownOpen = false;
+            }
             if (inMatch && k?.escapeKey.wasPressedThisFrame == true)
             {
                 if (_shopOpen)
@@ -250,7 +257,7 @@ namespace Jam.UI
                 GUILayout.Label(_message, _small);
             }
             GUILayout.Space(16);
-            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · Q ability (starts as Grenade) · B shop (in spawn) · Esc leave", _small);
+            GUILayout.Label("A/D move · Space jump · S+Space drop through\nMouse aim · LMB fire · Q / E abilities (Q starts as Grenade) · B shop (in spawn) · Esc leave", _small);
         }
 
         private void DrawQueued()
@@ -303,9 +310,16 @@ namespace Jam.UI
             GUI.Label(r, text, style);
         }
 
-        private const float ShopWidth = 760f;
+        private const float ShopWidth = 820f;
 
-        private static readonly Vector2 TileSize = new(140f, 128f);
+        private static readonly Vector2 TileSize = new(124f, 128f);
+
+        /// <summary>Offer (0/1) the player clicked while both ability slots are full: asking which slot it replaces. -1: not asking.</summary>
+        private int _replaceOffer = -1;
+        /// <summary>Dev shop: the slot and ability picked in the dropdown.</summary>
+        private int _devSlot;
+        private AbilityId _devPick = AbilityId.Heal;
+        private bool _devDropdownOpen;
 
         /// <summary>Hover text for the shop, drawn after the panel so it isn't clipped (null: none).</summary>
         private string _tooltip;
@@ -319,6 +333,8 @@ namespace Jam.UI
             _tooltip = null;
             GUILayout.Label("SHOP", _heading);
             GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  player kill ${Shop.PlayerBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
+            if (me.DevMovement)
+                GUILayout.Label("DEV SHOP: everything is free, and the shop opens anywhere.", _devNote);
             GUILayout.Space(12);
 
             GUILayout.Label("UPGRADES", _label);
@@ -327,32 +343,168 @@ namespace Jam.UI
                 DrawUpgradeRow(me, item);
             GUILayout.Space(16);
 
-            PlayerAbilities ab = me.Abilities;
-            GUILayout.Label("Q ABILITY", _label);
-            GUILayout.Label("Buying an ability replaces your current one. Hover for details.", _small);
-            GUILayout.Space(8);
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            AbilityDef current = ab.CurrentDef;
-            Tile(Icons.Get(current.Icon), current.Name, "Current", AbilityTooltip(current), clickable: false, enabled: true);
-            GUILayout.Label("→", _heading, GUILayout.Width(44), GUILayout.Height(TileSize.y));
-            for (int slot = 0; slot < 2; slot++)
-            {
-                AbilityDef def = Abilities.Get(ab.Offer(slot));
-                if (Tile(Icons.Get(def.Icon), def.Name, $"${def.Cost}", AbilityTooltip(def), clickable: true, enabled: me.Money.Value >= def.Cost))
-                    ab.ServerBuy((byte)slot);
-                GUILayout.Space(12);
-            }
-            GUILayout.Space(16);
-            if (Tile(Icons.Get("reroll"), "Reroll", $"${Abilities.RerollCost}", "Reroll\nReplace both offers with new random abilities.",
-                    clickable: true, enabled: me.Money.Value >= Abilities.RerollCost))
-                ab.ServerReroll();
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
+            if (me.DevMovement)
+                DrawDevAbilities(me.Abilities);
+            else
+                DrawAbilityShop(me, me.Abilities);
 
             GUILayout.Space(14);
             if (GUILayout.Button("Close (B)", _button))
                 _shopOpen = false;
+        }
+
+        /// <summary>Your Q and E slots, then the two offers and reroll. Buying fills an empty slot, else asks which to replace.</summary>
+        private void DrawAbilityShop(PlayerAvatar me, PlayerAbilities ab)
+        {
+            GUILayout.Label("ABILITIES  ·  Q and E", _label);
+            GUILayout.Label("Buying fills an empty slot, or replaces the one you choose. Hover for details.", _small);
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            SlotTiles(ab);
+            GUILayout.Label("→", _heading, GUILayout.Width(40), GUILayout.Height(TileSize.y));
+            for (int offer = 0; offer < 2; offer++)
+            {
+                AbilityDef def = Abilities.Get(ab.Offer(offer));
+                if (Tile(Icons.Get(def.Icon), def.Name, $"${def.Cost}", AbilityTooltip(def), clickable: true, enabled: me.Money.Value >= def.Cost))
+                {
+                    int empty = ab.EmptySlot;
+                    if (empty >= 0)
+                    {
+                        ab.ServerBuy((byte)offer, (byte)empty);
+                        _replaceOffer = -1;
+                    }
+                    else
+                        _replaceOffer = offer;
+                }
+                GUILayout.Space(10);
+            }
+            GUILayout.Space(10);
+            if (Tile(Icons.Get("reroll"), "Reroll", $"${Abilities.RerollCost}", "Reroll\nReplace both offers with new random abilities.",
+                    clickable: true, enabled: me.Money.Value >= Abilities.RerollCost))
+            {
+                ab.ServerReroll();
+                _replaceOffer = -1;
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            if (_replaceOffer < 0)
+                return;
+            // Both slots are full: which one does the purchase replace?
+            AbilityDef buying = Abilities.Get(ab.Offer(_replaceOffer));
+            GUILayout.Space(8);
+            GUILayout.Label($"Replace which ability with {buying.Name}?", _label);
+            GUILayout.BeginHorizontal();
+            int chosen = -1;
+            for (int s = 0; s < PlayerAbilities.SlotCount; s++)
+            {
+                AbilityDef held = ab.Def(s);
+                if (GUILayout.Button($"{PlayerAbilities.SlotKeys[s]}  ·  {(held != null ? held.Name : "(empty)")}", _rowButton))
+                    chosen = s;
+            }
+            bool cancel = GUILayout.Button("Cancel", _rowButton);
+            GUILayout.EndHorizontal();
+            if (chosen >= 0)
+                ab.ServerBuy((byte)_replaceOffer, (byte)chosen);
+            if (chosen >= 0 || cancel)
+                _replaceOffer = -1;
+        }
+
+        /// <summary>
+        /// Dev shop: pick a slot (its button shows what it holds) and any ability from the
+        /// dropdown, then confirm. Free. The open dropdown is a grid under the controls so it
+        /// stays inside the panel.
+        /// </summary>
+        private void DrawDevAbilities(PlayerAbilities ab)
+        {
+            GUILayout.Label("ABILITIES  ·  Q and E  (dev)", _label);
+            GUILayout.Label("Pick a slot and an ability, then confirm.", _small);
+            if (SmokeHover)
+                _devDropdownOpen = true; // smoke screenshots: show the open dropdown
+            GUILayout.Space(8);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            for (int s = 0; s < PlayerAbilities.SlotCount; s++)
+            {
+                Color old = GUI.backgroundColor;
+                if (_devSlot == s)
+                    GUI.backgroundColor = new Color(1f, 0.85f, 0.4f);
+                if (GUILayout.Button($"{PlayerAbilities.SlotKeys[s]}  ·  {AbilityName(ab.Held(s))}", _rowButton, GUILayout.Width(230)))
+                    _devSlot = s;
+                GUI.backgroundColor = old;
+                if (s == 0)
+                    GUILayout.Space(12);
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button($"{AbilityName(_devPick)}   {(_devDropdownOpen ? "▴" : "▾")}", _rowButton, GUILayout.Width(330)))
+                _devDropdownOpen = !_devDropdownOpen;
+            GUILayout.Space(12);
+            GUI.enabled = ab.Held(_devSlot) != _devPick;
+            if (GUILayout.Button($"Set {PlayerAbilities.SlotKeys[_devSlot]}", _rowButton, GUILayout.Width(130)))
+            {
+                ab.ServerDevSetAbility((byte)_devSlot, _devPick);
+                _devDropdownOpen = false;
+            }
+            GUI.enabled = true;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            if (!_devDropdownOpen)
+                return;
+            // Every ability, plus emptying the slot, four to a row.
+            List<AbilityId> options = new(Abilities.All) { AbilityId.None };
+            for (int i = 0; i < options.Count; i += 4)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                for (int j = i; j < i + 4; j++)
+                {
+                    if (j < options.Count)
+                        DevOption(options[j]);
+                    else
+                        GUILayout.Space(158);
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        private void DevOption(AbilityId id)
+        {
+            Color old = GUI.backgroundColor;
+            if (id == _devPick)
+                GUI.backgroundColor = new Color(1f, 0.85f, 0.4f);
+            if (GUILayout.Button(AbilityName(id), _devOption, GUILayout.Width(150)))
+            {
+                _devPick = id;
+                _devDropdownOpen = false;
+            }
+            GUI.backgroundColor = old;
+        }
+
+        private static string AbilityName(AbilityId id) => id == AbilityId.None ? "(empty)" : Abilities.Get(id).Name;
+
+        /// <summary>The Q and E slot tiles (what you hold now).</summary>
+        private void SlotTiles(PlayerAbilities ab)
+        {
+            for (int s = 0; s < PlayerAbilities.SlotCount; s++)
+            {
+                AbilityDef def = ab.Def(s);
+                string key = PlayerAbilities.SlotKeys[s];
+                if (def == null)
+                    Tile(null, "(empty)", key, $"Empty {key} slot\nBuy an ability to fill it.", clickable: false, enabled: false);
+                else
+                    Tile(Icons.Get(def.Icon), def.Name, key, AbilityTooltip(def), clickable: false, enabled: true);
+                if (s == 0)
+                    GUILayout.Space(8);
+            }
         }
 
         private static string AbilityTooltip(AbilityDef def) => $"{def.Name}\n{def.Description}.\n{def.Cooldown:0}s cooldown";
@@ -382,8 +534,8 @@ namespace Jam.UI
                 DrawLevelBar(new Rect(barRect.x, barRect.center.y - 8f, barRect.width, 16f), item, level);
             GUILayout.FlexibleSpace();
 
-            GUI.enabled = !full && me.Money.Value >= item.Cost;
-            if (GUILayout.Button(full ? (item.Consumable ? "Full" : "Maxed") : $"${item.Cost}", _rowButton, GUILayout.Width(120f)))
+            GUI.enabled = !full && (me.DevMovement || me.Money.Value >= item.Cost);
+            if (GUILayout.Button(full ? (item.Consumable ? "Full" : "Maxed") : me.DevMovement ? "Free" : $"${item.Cost}", _rowButton, GUILayout.Width(120f)))
                 me.ServerBuy(item.Id);
             GUI.enabled = true;
             GUILayout.EndHorizontal();
@@ -458,8 +610,8 @@ namespace Jam.UI
         private int _smokeHoverCount;
         private Vector2 SmokeHoverPoint(Rect r)
         {
-            // Tiles are hovered in order: current, offer A, offer B, reroll. Rows come first (3).
-            bool target = r.width == TileSize.x && r.height == TileSize.y && _smokeHoverCount++ % 4 == 2;
+            // Tiles are hovered in order: Q, E, offer A, offer B, reroll.
+            bool target = r.width == TileSize.x && r.height == TileSize.y && _smokeHoverCount++ % 5 == 3;
             return target ? r.center : new Vector2(-1000f, -1000f);
         }
 
@@ -632,6 +784,9 @@ namespace Jam.UI
             };
             _tooltipStyle.normal.background = SolidTexture(new Color(0.03f, 0.03f, 0.05f, 0.98f), new Color(1f, 0.85f, 0.4f, 0.6f));
             _tooltipStyle.normal.textColor = Color.white;
+            _devNote = new GUIStyle(_small);
+            _devNote.normal.textColor = new Color(1f, 0.85f, 0.4f);
+            _devOption = new GUIStyle(_rowButton) { fixedHeight = 30, fontSize = 17, margin = new RectOffset(4, 4, 1, 1) };
         }
         #endregion
     }

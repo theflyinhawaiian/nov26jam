@@ -154,7 +154,7 @@ namespace Jam.UI
         private void DrawWeapons(Vector2 screen, PlayerAvatar me)
         {
             const float w = 170f, h = 46f, gap = 10f;
-            float x = (screen.x - (w * 2f + gap)) * 0.5f;
+            float x = (screen.x - (w * 3f + gap * 2f)) * 0.5f;
             float y = screen.y - h - 16f;
             PlayerWeapons weapons = me.Weapons;
             PlayerAbilities abilities = me.Abilities;
@@ -170,11 +170,19 @@ namespace Jam.UI
             if (abilities != null)
             {
                 string blocked = me.Stunned ? "STUNNED" : me.Silenced ? "SILENCED" : null;
-                Slot(new Rect(x + w + gap, y, w, h), $"Q  {abilities.CurrentDef.Name}", abilities.CooldownRemaining, abilities.CooldownTotal, blocked);
+                for (int s = 0; s < PlayerAbilities.SlotCount; s++)
+                {
+                    Rect r = new(x + (w + gap) * (s + 1), y, w, h);
+                    AbilityDef def = abilities.Def(s);
+                    if (def == null)
+                        Slot(r, $"{PlayerAbilities.SlotKeys[s]}  (empty)", 0f, 0f, null, dim: true);
+                    else
+                        Slot(r, $"{PlayerAbilities.SlotKeys[s]}  {def.Name}", abilities.CooldownRemaining(s), abilities.CooldownTotal(s), blocked);
+                }
             }
         }
 
-        private void Slot(Rect r, string label, float remaining, float total, string blocked)
+        private void Slot(Rect r, string label, float remaining, float total, string blocked, bool dim = false)
         {
             Fill(r, Frame);
             Rect inner = Inset(r, 1f);
@@ -186,7 +194,7 @@ namespace Jam.UI
                 Fill(new Rect(inner.xMax - inner.width * t, inner.y, inner.width * t, inner.height), new Color(0.45f, 0.45f, 0.5f, 0.6f));
             }
             Color old = GUI.contentColor;
-            GUI.contentColor = blocked != null ? new Color(0.75f, 0.5f, 1f) : remaining > 0f ? new Color(0.7f, 0.7f, 0.75f) : Color.white;
+            GUI.contentColor = blocked != null ? new Color(0.75f, 0.5f, 1f) : remaining > 0f || dim ? new Color(0.6f, 0.6f, 0.65f) : Color.white;
             GUI.Label(inner, blocked ?? (remaining > 0.05f && total >= 2f ? $"{label}  {Mathf.CeilToInt(remaining)}" : label), _slot);
             GUI.contentColor = old;
         }

@@ -279,12 +279,14 @@ namespace Jam.Gameplay
         [ServerRpc]
         public void ServerBuy(ShopItemId id)
         {
-            if ((int)id >= Shop.Items.Length || IsDead.Value || !MatchLive || !InSpawnZone)
+            // The dev nickname shops anywhere, free.
+            if ((int)id >= Shop.Items.Length || IsDead.Value || !MatchLive || !(InSpawnZone || DevMovement))
                 return;
             ShopItem item = Shop.Get(id);
-            if (Money.Value < item.Cost || Level(id) >= item.MaxLevel)
+            if ((!DevMovement && Money.Value < item.Cost) || Level(id) >= item.MaxLevel)
                 return;
-            Money.Value -= item.Cost;
+            if (!DevMovement)
+                Money.Value -= item.Cost;
             switch (id)
             {
                 case ShopItemId.Vitality:

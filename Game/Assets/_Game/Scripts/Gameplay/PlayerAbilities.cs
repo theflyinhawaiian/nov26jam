@@ -9,10 +9,10 @@ using UnityEngine.InputSystem;
 namespace Jam.Gameplay
 {
     /// <summary>
-    /// The player's Q ability (see <see cref="Abilities"/>) and their shop offers. The owner
-    /// presses Q to aim at the cursor; the server validates (holding it, alive, not stunned or
-    /// silenced, off cooldown) and applies the effect. Grenade goes through PlayerWeapons'
-    /// projectile path (its weapon slot 1); the rest are resolved here.
+    /// The player's two ability slots, Q and E (see <see cref="Abilities"/>), and their shop
+    /// offers. The owner presses Q or E to aim at the cursor; the server validates (holding it in
+    /// that slot, alive, not stunned or silenced, off cooldown) and applies the effect. Grenade
+    /// goes through PlayerWeapons' projectile path (its weapon slot 1); the rest are resolved here.
     /// </summary>
     [RequireComponent(typeof(PlayerAvatar))]
     public class PlayerAbilities : NetworkBehaviour
@@ -22,16 +22,22 @@ namespace Jam.Gameplay
         /// <summary>Server accepts a use this early, for clock jitter between owner and server.</summary>
         private const float CooldownSlackSeconds = 0.2f;
 
+        public const int SlotCount = 2;
+        public static readonly string[] SlotKeys = { "Q", "E" };
+
+        /// <summary>The Q slot (starts as Grenade).</summary>
         public readonly SyncVar<AbilityId> Current = new(AbilityId.Grenade);
+        /// <summary>The E slot (empty until something is bought into it).</summary>
+        public readonly SyncVar<AbilityId> Second = new(AbilityId.None);
         /// <summary>The two abilities the shop currently offers this player.</summary>
         public readonly SyncVar<AbilityId> OfferA = new();
         public readonly SyncVar<AbilityId> OfferB = new();
 
         private PlayerAvatar _avatar;
-        /// <summary>Owner: when Q is next usable (local prediction). Server: when it's next allowed.</summary>
-        private float _readyAt;
-        /// <summary>Owner: cooldown length of the last use, for the HUD sweep.</summary>
-        private float _lastCooldown = 1f;
+        /// <summary>Per slot. Owner: when it's next usable (local prediction). Server: when it's next allowed.</summary>
+        private readonly float[] _readyAt = new float[SlotCount];
+        /// <summary>Per slot. Owner: cooldown length of the last use, for the HUD sweep.</summary>
+        private readonly float[] _lastCooldown = { 1f, 1f };
 
         private struct Bolt
         {
@@ -48,17 +54,26 @@ namespace Jam.Gameplay
         /// <summary>Server only: uses refused or applied, for logs and smoke tests.</summary>
         public int Uses { get; private set; }
 
-        public AbilityDef CurrentDef => Abilities.Get(Current.Value);
+        /// <summary>What a slot (0 = Q, 1 = E) holds; None if empty.</summary>
+        public AbilityId Held(int slot) => slot == 0 ? Current.Value : Second.Value;
+        /// <summary>A slot's ability, or null if it's empty.</summary>
+        public AbilityDef Def(int slot) => Held(slot) == AbilityId.None ? null : Abilities.Get(Held(slot));
+        public bool Holds(AbilityId id) => id != AbilityId.None && (Current.Value == id || Second.Value == id);
+        /// <summary>Which slot holds an ability, or -1.</summary>
+        public int SlotOf(AbilityId id) => id == AbilityId.None ? -1 : Current.Value == id ? 0 : Second.Value == id ? 1 : -1;
+        /// <summary>The slot a purchase goes into without asking: an empty one, else -1 (the player picks).</summary>
+        public int EmptySlot => Current.Value == AbilityId.None ? 0 : Second.Value == AbilityId.None ? 1 : -1;
         public AbilityId Offer(int slot) => slot == 0 ? OfferA.Value : OfferB.Value;
+        private SyncVar<AbilityId> SlotVar(int slot) => slot == 0 ? Current : Second;
 
-        /// <summary>Owner: seconds until Q is ready (Grenade uses the weapon's own cooldown).</summary>
-        public float CooldownRemaining => Current.Value == AbilityId.Grenade
+        /// <summary>Owner: seconds until a slot is ready (Grenade uses the weapon's own cooldown).</summary>
+        public float CooldownRemaining(int slot) => Held(slot) == AbilityId.Grenade
             ? _avatar.Weapons.CooldownRemaining(GrenadeWeaponIndex)
-            : Mathf.Max(0f, _readyAt - Time.time);
+            : Mathf.Max(0f, _readyAt[slot] - Time.time);
 
-        public float CooldownTotal => Current.Value == AbilityId.Grenade
+        public float CooldownTotal(int slot) => Held(slot) == AbilityId.Grenade
             ? _avatar.Weapons.Get(GrenadeWeaponIndex).Cooldown
-            : _lastCooldown;
+            : _lastCooldown[slot];
 
         private void Awake() => _avatar = GetComponent<PlayerAvatar>();
 
@@ -86,20 +101,26 @@ namespace Jam.Gameplay
             Keyboard k = Keyboard.current;
             Mouse mouse = Mouse.current;
             Camera cam = Camera.main;
-            if (k != null && k.qKey.wasPressedThisFrame && mouse != null && cam != null && !GameMenu.CapturesPointer)
-                TryUse(cam.ScreenToWorldPoint(mouse.position.ReadValue()));
+            if (k == null || mouse == null || cam == null || GameMenu.CapturesPointer)
+                return;
+            if (k.qKey.wasPressedThisFrame)
+                TryUse(cam.ScreenToWorldPoint(mouse.position.ReadValue()), 0);
+            if (k.eKey.wasPressedThisFrame)
+                TryUse(cam.ScreenToWorldPoint(mouse.position.ReadValue()), 1);
         }
 
         #region Using (owner → server)
-        /// <summary>Owner only: use the Q ability aimed at a world point. Public for the smoke-test driver.</summary>
-        public bool TryUse(Vector2 aim)
+        /// <summary>Owner only: use a slot's ability (0 = Q, 1 = E) aimed at a world point. Public for the smoke-test driver.</summary>
+        public bool TryUse(Vector2 aim, int slot = 0)
         {
-            if (!IsOwner || _avatar.IsDead.Value || !_avatar.MatchLive || _avatar.Stunned || _avatar.Silenced)
+            if (!IsOwner || slot < 0 || slot >= SlotCount || _avatar.IsDead.Value || !_avatar.MatchLive || _avatar.Stunned || _avatar.Silenced)
                 return false;
-            AbilityId id = Current.Value;
+            AbilityId id = Held(slot);
+            if (id == AbilityId.None)
+                return false;
             if (id == AbilityId.Grenade)
                 return _avatar.Weapons.FireAt(aim, GrenadeWeaponIndex);
-            if (Time.time < _readyAt)
+            if (Time.time < _readyAt[slot])
                 return false;
 
             PlayerAvatar target = null;
@@ -110,9 +131,9 @@ namespace Jam.Gameplay
                     return false;
             }
             AbilityDef def = Abilities.Get(id);
-            _readyAt = Time.time + def.Cooldown;
-            _lastCooldown = def.Cooldown;
-            ServerUse(id, transform.position, aim, target);
+            _readyAt[slot] = Time.time + def.Cooldown;
+            _lastCooldown[slot] = def.Cooldown;
+            ServerUse((byte)slot, id, transform.position, aim, target);
             return true;
         }
 
@@ -137,18 +158,18 @@ namespace Jam.Gameplay
         }
 
         [ServerRpc]
-        private void ServerUse(AbilityId id, Vector2 origin, Vector2 aim, PlayerAvatar target)
+        private void ServerUse(byte slot, AbilityId id, Vector2 origin, Vector2 aim, PlayerAvatar target)
         {
             Match match = _avatar.Match;
             string refuse = null;
             if (match == null || match.Ended || !_avatar.MatchLive || _avatar.IsDead.Value)
                 refuse = "not live";
-            else if (id != Current.Value || id == AbilityId.Grenade)
-                refuse = $"doesn't hold {id}";
+            else if (slot >= SlotCount || id != Held(slot) || id == AbilityId.Grenade || id == AbilityId.None)
+                refuse = $"doesn't hold {id} on {(slot < SlotCount ? SlotKeys[slot] : "?")}";
             else if (_avatar.Stunned || _avatar.Silenced)
                 refuse = "stunned/silenced";
-            else if (Time.time < _readyAt - CooldownSlackSeconds)
-                refuse = $"cooldown ({_readyAt - Time.time:0.00}s left)";
+            else if (Time.time < _readyAt[slot] - CooldownSlackSeconds)
+                refuse = $"cooldown ({_readyAt[slot] - Time.time:0.00}s left)";
             if (refuse != null)
             {
                 Debug.Log($"[Ability] {_avatar.Nickname.Value}: {id} refused, {refuse}");
@@ -169,7 +190,7 @@ namespace Jam.Gameplay
             if (!used)
                 return;
             Uses++;
-            _readyAt = Time.time + Abilities.Get(id).Cooldown;
+            _readyAt[slot] = Time.time + Abilities.Get(id).Cooldown;
         }
 
         private bool UseHeal()
@@ -371,21 +392,43 @@ namespace Jam.Gameplay
         private void ObserversSilence(Vector2 from, Vector2 to) => Fx.Tracer(from, to, new Color(0.75f, 0.4f, 1f), 0.25f, 0.12f);
 
         #region Shop (server)
-        /// <summary>Buy shop offer 0 or 1: it becomes our Q ability (ready at once) and that offer is replaced.</summary>
+        /// <summary>
+        /// Buy shop offer 0 or 1 into ability slot 0 (Q) or 1 (E), replacing what's there; it's
+        /// ready at once and that offer is replaced.
+        /// </summary>
         [ServerRpc]
-        public void ServerBuy(byte slot)
+        public void ServerBuy(byte offer, byte slot)
         {
-            if (slot > 1 || !CanShop())
+            if (offer > 1 || slot >= SlotCount || !CanShop())
                 return;
-            AbilityId id = Offer(slot);
+            AbilityId id = Offer(offer);
             AbilityDef def = Abilities.Get(id);
-            if (_avatar.Money.Value < def.Cost)
+            bool free = _avatar.DevMovement;
+            if (Holds(id) || (!free && _avatar.Money.Value < def.Cost))
                 return;
-            _avatar.Money.Value -= def.Cost;
-            Current.Value = id;
-            _readyAt = 0f;
-            RollOffers(rollA: slot == 0, rollB: slot == 1);
-            Debug.Log($"[Shop] {_avatar.Nickname.Value} bought {def.Name}; offers now {OfferA.Value}/{OfferB.Value}");
+            if (!free)
+                _avatar.Money.Value -= def.Cost;
+            AbilityId replaced = Held(slot);
+            SlotVar(slot).Value = id;
+            _readyAt[slot] = 0f;
+            RollOffers(rollA: offer == 0, rollB: offer == 1);
+            Debug.Log($"[Shop] {_avatar.Nickname.Value} bought {def.Name} on {SlotKeys[slot]} (replacing {replaced}); offers now {OfferA.Value}/{OfferB.Value}");
+        }
+
+        /// <summary>Dev shop (dev nickname only): put any ability in a slot, free. Holding it in the other slot swaps them.</summary>
+        [ServerRpc]
+        public void ServerDevSetAbility(byte slot, AbilityId id)
+        {
+            if (!_avatar.DevMovement || slot >= SlotCount || (id != AbilityId.None && System.Array.IndexOf(Abilities.All, id) < 0))
+                return;
+            int other = 1 - slot;
+            if (Held(other) == id)
+                SlotVar(other).Value = Held(slot);
+            SlotVar(slot).Value = id;
+            _readyAt[0] = _readyAt[1] = 0f;
+            if (Holds(OfferA.Value) || Holds(OfferB.Value))
+                RollOffers(rollA: true, rollB: true);
+            Debug.Log($"[Shop] {_avatar.Nickname.Value} (dev) set {SlotKeys[slot]} to {id}");
         }
 
         [ServerRpc]
@@ -398,9 +441,10 @@ namespace Jam.Gameplay
             Debug.Log($"[Shop] {_avatar.Nickname.Value} rerolled; offers now {OfferA.Value}/{OfferB.Value}");
         }
 
-        private bool CanShop() => !_avatar.IsDead.Value && _avatar.MatchLive && _avatar.InSpawnZone;
+        /// <summary>Alive, in the match, inside our spawn zone (the dev nickname shops anywhere).</summary>
+        private bool CanShop() => !_avatar.IsDead.Value && _avatar.MatchLive && (_avatar.InSpawnZone || _avatar.DevMovement);
 
-        /// <summary>New random offers for the chosen slots: never the ability we hold, never both the same.</summary>
+        /// <summary>New random offers for the chosen slots: never an ability we hold, never both the same.</summary>
         private void RollOffers(bool rollA, bool rollB)
         {
             if (rollA)
@@ -413,7 +457,7 @@ namespace Jam.Gameplay
         {
             List<AbilityId> pool = new();
             foreach (AbilityId id in Abilities.Purchasable)
-                if (id != Current.Value && id != other)
+                if (!Holds(id) && id != other)
                     pool.Add(id);
             return pool[Random.Range(0, pool.Count)];
         }
