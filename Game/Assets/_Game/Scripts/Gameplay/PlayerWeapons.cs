@@ -237,8 +237,7 @@ namespace Jam.Gameplay
         #region Hitscan
         private void FireHitscanLocal(byte index, WeaponDefinition w, Vector2 origin, Vector2 aim, PreciseTick pt)
         {
-            RaycastHit2D hit = _avatar.ArenaPhysics.Raycast(origin, aim, w.Range, Layers.GroundMask);
-            Fx.Tracer(origin, hit.collider != null ? hit.point : origin + aim * w.Range, Color.yellow);
+            Fx.Tracer(origin, origin + aim * LocalHitscanDistance(origin, aim, w.Range), Color.yellow);
 
             // Rewind diagnostics: report where we currently see the opponent. Not used for hit decisions.
             PlayerAvatar opponent = FindOpponent();
@@ -247,6 +246,38 @@ namespace Jam.Gameplay
                 Fx.Ghost(seen, _avatar.HitboxSize, new Color(0.2f, 1f, 0.2f, 0.5f));
 
             ServerFireHitscan(index, origin, aim, pt, seen, opponent != null);
+        }
+
+        /// <summary>
+        /// Client prediction of where the shot stops, for the tracer: the first of terrain, another
+        /// player, an enemy minion or a standing enemy tower (what LagCompensation.Raycast stops
+        /// at on the server, here at their current positions), so tracers don't pierce targets.
+        /// </summary>
+        private float LocalHitscanDistance(Vector2 origin, Vector2 aim, float range)
+        {
+            float best = range;
+            RaycastHit2D terrain = _avatar.ArenaPhysics.Raycast(origin, aim, range, Layers.GroundMask);
+            if (terrain.collider != null)
+                best = terrain.distance;
+            int team = _avatar.Team.Value;
+
+            foreach (PlayerAvatar a in new[] { PlayerAvatar.LocalPlayer, PlayerAvatar.RemotePlayer })
+                if (a != null && a != _avatar && a.IsSpawned && !a.IsDead.Value
+                    && LagCompensation.RayIntersectsRect(origin, aim, a.HitboxAt(a.transform.position), out float d) && d < best)
+                    best = d;
+
+            foreach (Minion m in Minion.Active)
+                if (m != null && m.Team.Value != team && ((IDamageable)m).Attackable
+                    && LagCompensation.RayIntersectsRect(origin, aim, m.HitboxAt(m.transform.position), out float d) && d < best)
+                    best = d;
+
+            MatchState state = MatchState.Local;
+            if (state != null)
+                for (int i = 0; i < state.TowerHealth.Count; i++)
+                    if (LaneLayout.TowerTeam(i) != team && state.TowerHealth[i] > 0
+                        && LagCompensation.RayIntersectsRect(origin, aim, state.Arena.TowerRect(LaneLayout.TowerTeam(i), LaneLayout.TowerLane(i)), out float d) && d < best)
+                        best = d;
+            return best;
         }
 
         [ServerRpc]
