@@ -13,6 +13,8 @@ namespace Jam.Gameplay
         /// <summary>Shop price; 0 for the starting Grenade (not sold).</summary>
         public int Cost;
         public float Cooldown;
+        /// <summary>Shop/HUD icon: Resources/Icons/{Icon}.png.</summary>
+        public string Icon;
     }
 
     /// <summary>
@@ -42,12 +44,12 @@ namespace Jam.Gameplay
 
         public static readonly AbilityDef[] Defs =
         {
-            new() { Id = AbilityId.Grenade, Name = "Grenade", Description = "Lobbed explosive", Cost = 0, Cooldown = 3f },
-            new() { Id = AbilityId.Heal, Name = "Heal", Description = $"Restore {HealAmount} health", Cost = 100, Cooldown = 12f },
-            new() { Id = AbilityId.Teleport, Name = "Teleport", Description = $"Blink up to {TeleportRange:0} units toward the cursor", Cost = 125, Cooldown = 10f },
-            new() { Id = AbilityId.Slow, Name = "Slow Field", Description = $"Enemies in an area move {SlowFactor * 100f:0}% slower for {SlowSeconds}s", Cost = 100, Cooldown = 10f },
-            new() { Id = AbilityId.Silence, Name = "Silence", Description = $"Target enemy can't use abilities for {SilenceSeconds}s. Can't be dodged", Cost = 125, Cooldown = 12f },
-            new() { Id = AbilityId.Stun, Name = "Stun Bolt", Description = $"Bolt that stuns the first enemy hit for {StunSeconds}s", Cost = 150, Cooldown = 10f },
+            new() { Id = AbilityId.Grenade, Name = "Grenade", Description = "Lobbed explosive", Cost = 0, Cooldown = 3f, Icon = "grenade" },
+            new() { Id = AbilityId.Heal, Name = "Heal", Description = $"Restore {HealAmount} health", Cost = 100, Cooldown = 12f, Icon = "heal" },
+            new() { Id = AbilityId.Teleport, Name = "Teleport", Description = $"Blink up to {TeleportRange:0} units toward the cursor", Cost = 125, Cooldown = 10f, Icon = "teleport" },
+            new() { Id = AbilityId.Slow, Name = "Slow Field", Description = $"Enemies in an area move {SlowFactor * 100f:0}% slower for {SlowSeconds}s", Cost = 100, Cooldown = 10f, Icon = "slow" },
+            new() { Id = AbilityId.Silence, Name = "Silence", Description = $"Target enemy can't use abilities for {SilenceSeconds}s. Can't be dodged", Cost = 125, Cooldown = 12f, Icon = "silence" },
+            new() { Id = AbilityId.Stun, Name = "Stun Bolt", Description = $"Bolt that stuns the first enemy hit for {StunSeconds}s", Cost = 150, Cooldown = 10f, Icon = "stun" },
         };
 
         /// <summary>What the shop can offer (not Grenade).</summary>

@@ -29,6 +29,7 @@ namespace Jam.Net
     ///   none leaves it to the server's random pick when the countdown ends).
     /// -smokename name: queue with this nickname (e.g. the dev nickname "peet").
     /// -smokeshop: open the shop whenever we're in our spawn zone (with -smokeshot, to see it).
+    /// -smokehover: with -smokeshop, show the tooltip of the second ability offer (for screenshots).
     /// -smokerequeue: after each match ends, queue again (exercises arena unload and repeat matches).
     /// -smokeshot dir: (windowed, not -batchmode) save the game's own frame to dir every 4s
     ///   once the match is live, to check the HUD without screenshotting the desktop.
@@ -75,6 +76,8 @@ namespace Jam.Net
         private int _cheats;
         private string _shotDir;
         private float _nextShot;
+        /// <summary>-smokeshotevery seconds: how often -smokeshot saves a frame (default 4).</summary>
+        private float _shotEvery = 4f;
         private int _shots;
         private float _nextCheat;
 
@@ -89,10 +92,13 @@ namespace Jam.Net
             _gun = gunArg.Equals("blaster", StringComparison.OrdinalIgnoreCase) ? PlayerWeapons.GunChoices[1]
                 : gunArg.Equals("none", StringComparison.OrdinalIgnoreCase) ? -1 : PlayerWeapons.GunChoices[0];
             GameMenu.SmokeOpenShop = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokeshop") >= 0;
+            GameMenu.SmokeHover = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokehover") >= 0;
             if (Enum.TryParse(GetArg("-smokeability") ?? "", true, out AbilityId want))
                 _wantAbility = want;
             _requeue = Array.IndexOf(Environment.GetCommandLineArgs(), "-smokerequeue") >= 0;
             _shotDir = GetArg("-smokeshot");
+            if (float.TryParse(GetArg("-smokeshotevery") ?? "", System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float every) && every > 0f)
+                _shotEvery = every;
 
             _nm.ClientManager.OnClientConnectionState += OnClientConnectionState;
             _nm.ClientManager.RegisterBroadcast<MatchStatusBroadcast>(OnMatchStatus);
@@ -147,7 +153,7 @@ namespace Jam.Net
 
             if (_shotDir != null && local != null && local.IsLive && Time.time >= _nextShot)
             {
-                _nextShot = Time.time + 4f;
+                _nextShot = Time.time + _shotEvery;
                 string path = System.IO.Path.Combine(_shotDir, $"hud-{++_shots:00}.png");
                 ScreenCapture.CaptureScreenshot(path);
                 Debug.Log($"[Smoke] Screenshot {path}");

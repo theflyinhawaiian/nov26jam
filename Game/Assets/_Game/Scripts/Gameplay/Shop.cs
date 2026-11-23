@@ -12,6 +12,8 @@ namespace Jam.Gameplay
         public int MaxLevel;
         /// <summary>Used up in play and bought again (Armor), rather than a permanent upgrade.</summary>
         public bool Consumable;
+        /// <summary>Shop icon: Resources/Icons/{Icon}.png.</summary>
+        public string Icon;
     }
 
     /// <summary>
@@ -36,9 +38,9 @@ namespace Jam.Gameplay
 
         public static readonly ShopItem[] Items =
         {
-            new() { Id = ShopItemId.Vitality, Name = "Vitality", Description = $"+{VitalityHealth} max health", Cost = 50, MaxLevel = 4 },
-            new() { Id = ShopItemId.Firepower, Name = "Firepower", Description = $"+{FirepowerDamage * 100f:0}% weapon damage", Cost = 75, MaxLevel = 4 },
-            new() { Id = ShopItemId.Armor, Name = "Armor", Description = $"{ArmorPoints} temporary health, used up before your health", Cost = 25, MaxLevel = ArmorPoints, Consumable = true },
+            new() { Id = ShopItemId.Vitality, Name = "Vitality", Description = $"+{VitalityHealth} max health", Cost = 50, MaxLevel = 4, Icon = "vitality" },
+            new() { Id = ShopItemId.Firepower, Name = "Firepower", Description = $"+{FirepowerDamage * 100f:0}% weapon damage", Cost = 75, MaxLevel = 4, Icon = "firepower" },
+            new() { Id = ShopItemId.Armor, Name = "Armor", Description = $"{ArmorPoints} temporary health, used up before your health", Cost = 25, MaxLevel = ArmorPoints, Consumable = true, Icon = "armor" },
         };
 
         public static ShopItem Get(ShopItemId id) => Items[(int)id];

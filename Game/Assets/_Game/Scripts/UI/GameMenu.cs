@@ -37,7 +37,8 @@ namespace Jam.UI
         private bool _wasConnected;
 
         private readonly MatchHud _hud = new();
-        private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel, _solidPanel;
+        private GUIStyle _title, _big, _heading, _label, _small, _button, _field, _panel, _solidPanel,
+            _rowLabel, _rowLabelHover, _rowButton, _tile, _currentTile, _tileName, _barLabel, _tooltipStyle;
         private readonly BackdropBlur _blur = new();
 
         /// <summary>Smoke tests (-smokeshop): open the shop whenever it's available, for screenshots.</summary>
@@ -192,6 +193,7 @@ namespace Jam.UI
                     {
                         _blur.Draw();
                         Panel(screen, DrawShop, ShopWidth, _solidPanel);
+                        DrawTooltip(screen);
                     }
                     break;
                 case MatchStatus.Ended:
@@ -298,61 +300,189 @@ namespace Jam.UI
 
         private const float ShopWidth = 760f;
 
+        private static readonly Vector2 TileSize = new(140f, 128f);
+
+        /// <summary>Hover text for the shop, drawn after the panel so it isn't clipped (null: none).</summary>
+        private string _tooltip;
+        private Vector2 _tooltipAt;
+
         private void DrawShop()
         {
             PlayerAvatar me = PlayerAvatar.LocalPlayer;
             if (me == null || me.Abilities == null)
                 return;
+            _tooltip = null;
             GUILayout.Label("SHOP", _heading);
             GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
             GUILayout.Space(12);
-            GUILayout.BeginHorizontal();
 
-            GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 80f) * 0.5f));
             GUILayout.Label("UPGRADES", _label);
-            GUILayout.Space(4);
+            GUILayout.Space(2);
             foreach (ShopItem item in Shop.Items)
-            {
-                int level = me.Level(item.Id);
-                bool maxed = level >= item.MaxLevel;
-                GUILayout.Label(item.Consumable ? $"{item.Name}  ({level}/{item.MaxLevel} left)" : $"{item.Name}  ({level}/{item.MaxLevel})", _label);
-                GUILayout.Label(item.Description, _small);
-                GUI.enabled = !maxed && me.Money.Value >= item.Cost;
-                if (GUILayout.Button(maxed ? (item.Consumable ? "Full" : "Maxed") : $"Buy  ${item.Cost}", _button))
-                    me.ServerBuy(item.Id);
-                GUI.enabled = true;
-                GUILayout.Space(8);
-            }
-            GUILayout.EndVertical();
-
-            GUILayout.Space(24);
+                DrawUpgradeRow(me, item);
+            GUILayout.Space(16);
 
             PlayerAbilities ab = me.Abilities;
-            GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 80f) * 0.5f));
-            GUILayout.Label($"Q ABILITY  ·  you have {ab.CurrentDef.Name}", _label);
-            GUILayout.Label("Buying replaces it.", _small);
-            GUILayout.Space(4);
+            GUILayout.Label("Q ABILITY", _label);
+            GUILayout.Label("Buying an ability replaces your current one. Hover for details.", _small);
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            AbilityDef current = ab.CurrentDef;
+            Tile(Icons.Get(current.Icon), current.Name, "Current", AbilityTooltip(current), clickable: false, enabled: true);
+            GUILayout.Label("→", _heading, GUILayout.Width(44), GUILayout.Height(TileSize.y));
             for (int slot = 0; slot < 2; slot++)
             {
                 AbilityDef def = Abilities.Get(ab.Offer(slot));
-                GUILayout.Label($"{def.Name}  ·  {def.Cooldown:0}s cooldown", _label);
-                GUILayout.Label(def.Description, _small);
-                GUI.enabled = me.Money.Value >= def.Cost;
-                if (GUILayout.Button($"Buy  ${def.Cost}", _button))
+                if (Tile(Icons.Get(def.Icon), def.Name, $"${def.Cost}", AbilityTooltip(def), clickable: true, enabled: me.Money.Value >= def.Cost))
                     ab.ServerBuy((byte)slot);
-                GUI.enabled = true;
-                GUILayout.Space(8);
+                GUILayout.Space(12);
             }
-            GUI.enabled = me.Money.Value >= Abilities.RerollCost;
-            if (GUILayout.Button($"Reroll offers  ${Abilities.RerollCost}", _button))
+            GUILayout.Space(16);
+            if (Tile(Icons.Get("reroll"), "Reroll", $"${Abilities.RerollCost}", "Reroll\nReplace both offers with new random abilities.",
+                    clickable: true, enabled: me.Money.Value >= Abilities.RerollCost))
                 ab.ServerReroll();
-            GUI.enabled = true;
-            GUILayout.EndVertical();
-
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            GUILayout.Space(8);
+
+            GUILayout.Space(14);
             if (GUILayout.Button("Close (B)", _button))
                 _shopOpen = false;
+        }
+
+        private static string AbilityTooltip(AbilityDef def) => $"{def.Name}\n{def.Description}.\n{def.Cooldown:0}s cooldown";
+
+        /// <summary>One stat upgrade: icon, name (hover for what it does), level bar, buy button.</summary>
+        private void DrawUpgradeRow(PlayerAvatar me, ShopItem item)
+        {
+            const float rowHeight = 44f;
+            int level = me.Level(item.Id);
+            bool full = level >= item.MaxLevel;
+            bool repaint = Event.current.type == EventType.Repaint;
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            Rect iconRect = GUILayoutUtility.GetRect(34f, rowHeight, GUILayout.Width(34f), GUILayout.Height(rowHeight));
+            Texture2D icon = Icons.Get(item.Icon);
+            if (repaint && icon != null)
+                GUI.DrawTexture(new Rect(iconRect.x, iconRect.center.y - 15f, 30f, 30f), icon, ScaleMode.ScaleToFit);
+            GUILayout.Space(10);
+
+            Rect nameRect = GUILayoutUtility.GetRect(130f, rowHeight, GUILayout.Width(130f), GUILayout.Height(rowHeight));
+            bool hovered = Hover(nameRect, $"{item.Name}\n{item.Description}." +
+                (item.Consumable ? $"\nBuying refills it to {item.MaxLevel}." : $"\nUp to {item.MaxLevel} times."));
+            GUI.Label(nameRect, item.Name, hovered ? _rowLabelHover : _rowLabel);
+
+            Rect barRect = GUILayoutUtility.GetRect(330f, rowHeight, GUILayout.Width(330f), GUILayout.Height(rowHeight));
+            if (repaint)
+                DrawLevelBar(new Rect(barRect.x, barRect.center.y - 8f, barRect.width, 16f), item, level);
+            GUILayout.FlexibleSpace();
+
+            GUI.enabled = !full && me.Money.Value >= item.Cost;
+            if (GUILayout.Button(full ? (item.Consumable ? "Full" : "Maxed") : $"${item.Cost}", _rowButton, GUILayout.Width(120f)))
+                me.ServerBuy(item.Id);
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+        }
+
+        private static Color UpgradeColor(ShopItemId id) => id switch
+        {
+            ShopItemId.Vitality => new Color(0.9f, 0.3f, 0.35f),
+            ShopItemId.Firepower => new Color(1f, 0.6f, 0.2f),
+            _ => new Color(0.55f, 0.75f, 1f),
+        };
+
+        /// <summary>Upgrades: one segment per level. Armor: a bar of points left (it refills rather than levels).</summary>
+        private void DrawLevelBar(Rect r, ShopItem item, int level)
+        {
+            Color empty = new(1f, 1f, 1f, 0.12f);
+            Color fill = UpgradeColor(item.Id);
+            if (item.Consumable)
+            {
+                Fill(r, empty);
+                Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01((float)level / item.MaxLevel), r.height), fill);
+                GUI.Label(new Rect(r.xMax + 10f, r.y - 4f, 70f, r.height + 8f), $"{level} / {item.MaxLevel}", _barLabel);
+                return;
+            }
+            const float gap = 5f;
+            float w = (r.width - gap * (item.MaxLevel - 1)) / item.MaxLevel;
+            for (int i = 0; i < item.MaxLevel; i++)
+                Fill(new Rect(r.x + i * (w + gap), r.y, w, r.height), i < level ? fill : empty);
+        }
+
+        /// <summary>Icon tile (ability offers, reroll, current ability). Returns whether it was clicked.</summary>
+        private bool Tile(Texture2D icon, string name, string caption, string tooltip, bool clickable, bool enabled)
+        {
+            Rect r = GUILayoutUtility.GetRect(TileSize.x, TileSize.y, GUILayout.Width(TileSize.x), GUILayout.Height(TileSize.y));
+            bool clicked = false;
+            if (clickable)
+            {
+                GUI.enabled = enabled;
+                clicked = GUI.Button(r, GUIContent.none, _tile);
+                GUI.enabled = true;
+            }
+            else
+                GUI.Box(r, GUIContent.none, _currentTile);
+            Hover(r, tooltip);
+            if (Event.current.type == EventType.Repaint)
+            {
+                Color old = GUI.color;
+                if (!enabled)
+                    GUI.color = new Color(1f, 1f, 1f, 0.4f);
+                if (icon != null)
+                    GUI.DrawTexture(new Rect(r.center.x - 28f, r.y + 12f, 56f, 56f), icon, ScaleMode.ScaleToFit);
+                GUI.Label(new Rect(r.x, r.y + 72f, r.width, 26f), name, _tileName);
+                GUI.Label(new Rect(r.x, r.y + 98f, r.width, 22f), caption, _small);
+                GUI.color = old;
+            }
+            return clicked;
+        }
+
+        /// <summary>If the mouse is over r, show text as the tooltip. Returns whether it's hovered.</summary>
+        private bool Hover(Rect r, string text)
+        {
+            Vector2 mouse = SmokeHover ? SmokeHoverPoint(r) : Event.current.mousePosition;
+            if (Event.current.type != EventType.Repaint || !r.Contains(mouse))
+                return false;
+            _tooltip = text;
+            _tooltipAt = GUIUtility.GUIToScreenPoint(mouse);
+            return true;
+        }
+
+        /// <summary>Smoke screenshots (-smokehover): pretend the mouse is over the second ability offer tile.</summary>
+        public static bool SmokeHover;
+        private int _smokeHoverCount;
+        private Vector2 SmokeHoverPoint(Rect r)
+        {
+            // Tiles are hovered in order: current, offer A, offer B, reroll. Rows come first (3).
+            bool target = r.width == TileSize.x && r.height == TileSize.y && _smokeHoverCount++ % 4 == 2;
+            return target ? r.center : new Vector2(-1000f, -1000f);
+        }
+
+        /// <summary>Draws the shop's hover text beside the cursor, kept on screen.</summary>
+        private void DrawTooltip(Vector2 screen)
+        {
+            if (_tooltip == null || Event.current.type != EventType.Repaint)
+                return;
+            Vector2 p = GUIUtility.ScreenToGUIPoint(_tooltipAt);
+            // First line is the title.
+            int nl = _tooltip.IndexOf('\n');
+            GUIContent content = new(nl < 0 ? $"<b>{_tooltip}</b>" : $"<b>{_tooltip[..nl]}</b>{_tooltip[nl..]}");
+            const float w = 300f;
+            float h = _tooltipStyle.CalcHeight(content, w);
+            Rect r = new(p.x + 18f, p.y + 18f, w, h);
+            if (r.xMax > screen.x - 8f)
+                r.x = p.x - w - 10f;
+            if (r.yMax > screen.y - 8f)
+                r.y = p.y - h - 10f;
+            GUI.Box(r, content, _tooltipStyle);
+        }
+
+        private static void Fill(Rect r, Color c)
+        {
+            Color old = GUI.color;
+            GUI.color = c;
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = old;
         }
 
         /// <summary>Start-of-match pick between the two guns (below the countdown).</summary>
@@ -464,9 +594,9 @@ namespace Jam.UI
             if (_title != null)
                 return;
             _panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24) };
-            // 90% opaque, for the shop over its blurred backdrop.
+            // Nearly opaque, for the shop over its blurred backdrop.
             _solidPanel = new GUIStyle(_panel);
-            _solidPanel.normal.background = SolidTexture(new Color(0.09f, 0.09f, 0.12f, 0.9f), new Color(1f, 1f, 1f, 0.18f));
+            _solidPanel.normal.background = SolidTexture(new Color(0.09f, 0.09f, 0.12f, 0.97f), new Color(1f, 1f, 1f, 0.18f));
             _solidPanel.border = new RectOffset(1, 1, 1, 1);
             _title = new GUIStyle(GUI.skin.label) { fontSize = 40, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _big = new GUIStyle(_title) { fontSize = 110 };
@@ -476,6 +606,25 @@ namespace Jam.UI
             _small.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
             _button = new GUIStyle(GUI.skin.button) { fontSize = 22, fixedHeight = 46, margin = new RectOffset(4, 4, 6, 6) };
             _field = new GUIStyle(GUI.skin.textField) { fontSize = 22, fixedHeight = 40, alignment = TextAnchor.MiddleCenter };
+
+            // Shop.
+            _rowLabel = new GUIStyle(_label) { alignment = TextAnchor.MiddleLeft, wordWrap = false };
+            _rowLabelHover = new GUIStyle(_rowLabel);
+            _rowLabelHover.normal.textColor = new Color(1f, 0.85f, 0.4f);
+            _rowButton = new GUIStyle(_button) { fontSize = 19, fixedHeight = 36, margin = new RectOffset(4, 4, 4, 4) };
+            _tile = new GUIStyle(GUI.skin.button);
+            _currentTile = new GUIStyle(GUI.skin.box);
+            _currentTile.normal.background = SolidTexture(new Color(1f, 1f, 1f, 0.06f), new Color(1f, 0.85f, 0.4f, 0.7f));
+            _currentTile.border = new RectOffset(1, 1, 1, 1);
+            _tileName = new GUIStyle(_label) { fontSize = 18, wordWrap = false };
+            _barLabel = new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft, wordWrap = false };
+            _tooltipStyle = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = 16, wordWrap = true, alignment = TextAnchor.UpperLeft, richText = true,
+                padding = new RectOffset(12, 12, 10, 10), border = new RectOffset(1, 1, 1, 1),
+            };
+            _tooltipStyle.normal.background = SolidTexture(new Color(0.03f, 0.03f, 0.05f, 0.98f), new Color(1f, 0.85f, 0.4f, 0.6f));
+            _tooltipStyle.normal.textColor = Color.white;
         }
         #endregion
     }
