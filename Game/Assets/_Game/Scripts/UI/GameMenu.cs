@@ -318,7 +318,7 @@ namespace Jam.UI
                 return;
             _tooltip = null;
             GUILayout.Label("SHOP", _heading);
-            GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
+            GUILayout.Label($"${me.Money.Value}  ·  minion kill ${Shop.MinionBounty}  ·  player kill ${Shop.PlayerBounty}  ·  enemy tower ${Shop.TowerBounty}", _small);
             GUILayout.Space(12);
 
             GUILayout.Label("UPGRADES", _label);

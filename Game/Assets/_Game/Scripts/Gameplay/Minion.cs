@@ -582,7 +582,7 @@ namespace Jam.Gameplay
             if (Health.Value == 0)
             {
                 if (source.Player != null)
-                    source.Player.AddMoney(Shop.MinionBounty);
+                    source.Player.AwardBounty(Shop.MinionBounty, transform.position);
                 ObserversDie(transform.position);
                 Despawn();
             }

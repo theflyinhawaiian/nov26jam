@@ -25,6 +25,8 @@ namespace Jam.Gameplay
     {
         /// <summary>Paid to the player who lands the killing blow on an enemy minion.</summary>
         public const int MinionBounty = 5;
+        /// <summary>Paid to the player who lands the killing blow on an enemy player.</summary>
+        public const int PlayerBounty = 50;
         /// <summary>Paid to every player on the other team when a tower falls.</summary>
         public const int TowerBounty = 100;
 

@@ -238,6 +238,8 @@ namespace Jam.Gameplay
             ObserversDamageFlash();
             if (Health.Value == 0)
             {
+                if (source.Player != null && source.Player != this && source.Team != Team.Value)
+                    source.Player.AwardBounty(Shop.PlayerBounty, transform.position);
                 IsDead.Value = true;
                 Armor.Value = 0;
                 Deaths.Value++;
@@ -298,6 +300,20 @@ namespace Jam.Gameplay
             }
         }
         #endregion
+
+        /// <summary>Pay a bounty and show the owner a "+$N" popup where it was earned.</summary>
+        [Server]
+        public void AwardBounty(int amount, Vector2 at)
+        {
+            if (amount <= 0)
+                return;
+            AddMoney(amount);
+            if (Owner != null && Owner.IsActive)
+                TargetMoneyPopup(Owner, amount, at);
+        }
+
+        [TargetRpc]
+        private void TargetMoneyPopup(NetworkConnection conn, int amount, Vector2 at) => Jam.UI.MoneyPopups.Add(amount, at);
 
         #region Movement validation (server) and forced teleports
         /// <summary>

@@ -259,9 +259,10 @@ namespace Jam.Net
             {
                 int team = LaneLayout.TowerTeam(index);
                 Debug.Log($"[Lanes] Match {m.Id}: {(team == 0 ? "Blue" : "Red")} {LaneLayout.TowerLane(index)} tower destroyed");
+                Vector2 at = m.State.Arena.TowerCenter(team, LaneLayout.TowerLane(index));
                 foreach (PlayerAvatar a in m.Avatars)
                     if (a != null && a.Team.Value != team)
-                        a.AddMoney(Shop.TowerBounty);
+                        a.AwardBounty(Shop.TowerBounty, at);
             };
             m.Lanes = new LaneDirector(m, SpawnMinion, _teamSendsMinions, _waveSeconds);
 

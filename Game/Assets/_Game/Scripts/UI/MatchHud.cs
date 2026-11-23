@@ -29,7 +29,7 @@ namespace Jam.UI
         private static readonly Color Track = new(0f, 0f, 0f, 0.55f);
         private static readonly Color Frame = new(1f, 1f, 1f, 0.25f);
 
-        private GUIStyle _barText, _name, _slot, _respawn, _respawnSmall, _arrowLabel, _waveLabel;
+        private GUIStyle _barText, _name, _slot, _respawn, _respawnSmall, _arrowLabel, _waveLabel, _moneyPopup;
         private Texture2D _arrow;
 
         /// <param name="screen">Screen size in reference units.</param>
@@ -49,6 +49,7 @@ namespace Jam.UI
             DrawHealth(screen, me);
             DrawWeapons(screen, me);
             DrawStatusLabels(scale);
+            DrawMoneyPopups(scale);
             if (me.IsDead.Value)
                 DrawRespawn(screen, me);
             else if (me.InSpawnZone && !shopOpen)
@@ -219,6 +220,30 @@ namespace Jam.UI
             GUI.matrix = old;
         }
 
+        /// <summary>"+$N" where a bounty was earned: drifts up and fades out (MoneyPopups).</summary>
+        private void DrawMoneyPopups(float scale)
+        {
+            Camera cam = Camera.main;
+            if (cam == null)
+                return;
+            MoneyPopups.Expire();
+            Matrix4x4 oldMatrix = GUI.matrix;
+            Color oldColor = GUI.color;
+            foreach (MoneyPopups.Popup p in MoneyPopups.Active)
+            {
+                float t = Mathf.Clamp01((Time.time - p.Start) / MoneyPopups.Duration);
+                float rise = MoneyPopups.Rise * (1f - (1f - t) * (1f - t)); // ease out
+                Vector3 sp = cam.WorldToScreenPoint(p.At + Vector2.up * (0.8f + rise));
+                if (sp.z < 0f)
+                    continue;
+                GUI.color = new Color(1f, 1f, 1f, t < 0.35f ? 1f : 1f - (t - 0.35f) / 0.65f);
+                GUI.matrix = Matrix4x4.TRS(new Vector3(sp.x, Screen.height - sp.y, 0f), Quaternion.identity, new Vector3(scale, scale, 1f));
+                Shadowed(new Rect(-80f, -16f, 160f, 32f), $"+${p.Amount}", _moneyPopup);
+            }
+            GUI.color = oldColor;
+            GUI.matrix = oldMatrix;
+        }
+
         private void DrawRespawn(Vector2 screen, PlayerAvatar me)
         {
             Rect r = new(0f, screen.y * 0.36f, screen.x, 60f);
@@ -344,6 +369,8 @@ namespace Jam.UI
             _arrowLabel.normal.textColor = Color.white;
             _waveLabel = new GUIStyle(GUI.skin.label) { fontSize = 15, alignment = TextAnchor.MiddleCenter };
             _waveLabel.normal.textColor = new Color(0.85f, 0.85f, 0.9f);
+            _moneyPopup = new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            _moneyPopup.normal.textColor = new Color(1f, 0.85f, 0.25f);
         }
         #endregion
     }
