@@ -14,9 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Jam.Gameplay.WeaponDefinition
   DisplayName: Rifle
   Kind: 0
-  Damage: 7
+  Damage: 9
   Cooldown: 0.2
   Range: 24
+  MinDamage: 1
+  FalloffStart: 10
   LaunchSpeed: 22
   ProjectileGravity: 25
   ExplosionRadius: 2.5

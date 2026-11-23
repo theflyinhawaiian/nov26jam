@@ -506,7 +506,9 @@ namespace Jam.UI
                 WeaponDefinition w = me.Weapons.Get(slot);
                 GUILayout.BeginVertical(GUILayout.Width((ShopWidth - 90f) * 0.5f));
                 GUILayout.Label(w.DisplayName, _label);
-                GUILayout.Label($"{w.Damage} damage  ·  {w.Damage / w.Cooldown:0} per second  ·  range {w.Range:0}", _small);
+                GUILayout.Label(w.HasFalloff
+                    ? $"{w.Damage} damage up close, falling to {w.MinDamage} at range {w.Range:0}  ·  {w.Damage / w.Cooldown:0} per second up close"
+                    : $"{w.Damage} damage  ·  {w.Damage / w.Cooldown:0} per second  ·  range {w.Range:0}", _small);
                 GUILayout.Label(w.Range < 11f ? "Short range: step into tower range to hit towers." : "Long range: hits towers from outside their range.", _small);
                 if (GUILayout.Button($"{i + 1}  {w.DisplayName}", _button))
                     me.Weapons.ServerChooseGun(slot);

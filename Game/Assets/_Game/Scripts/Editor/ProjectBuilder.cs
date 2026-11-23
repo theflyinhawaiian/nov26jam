@@ -112,7 +112,10 @@ namespace Jam.EditorTools
         {
             w.DisplayName = "Rifle";
             w.Kind = WeaponKind.Hitscan;
-            w.Damage = 7;
+            // Fall-off: 9 up close (out to just past the Blaster's range of 9), down to 1 at max range.
+            w.Damage = 9;
+            w.MinDamage = 1;
+            w.FalloffStart = 10f;
             w.Cooldown = 0.2f;
             w.Range = 24f;
         });

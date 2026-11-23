@@ -21,6 +21,15 @@ namespace Jam.Gameplay
 
         [Header("Hitscan")]
         public float Range = 24f;
+        [Tooltip("Damage fall-off: full Damage out to FalloffStart, then down linearly to MinDamage at Range. MinDamage 0 = no fall-off.")]
+        public int MinDamage;
+        public float FalloffStart;
+
+        public bool HasFalloff => MinDamage > 0 && MinDamage < Damage && FalloffStart < Range;
+
+        /// <summary>Hitscan damage for a hit this far from the muzzle (before upgrades).</summary>
+        public float DamageAt(float distance) =>
+            HasFalloff ? Mathf.Lerp(Damage, MinDamage, Mathf.InverseLerp(FalloffStart, Range, distance)) : Damage;
 
         [Header("Projectile")]
         public float LaunchSpeed = 22f;
