@@ -21,7 +21,7 @@ namespace Jam.Net
         private static readonly MinionType[] WavePerLane = { MinionType.Melee, MinionType.Flyer, MinionType.Ranged, MinionType.Flyer };
         private const float SpawnSpacing = 0.8f;
 
-        private const float TowerRange = 11f;
+        public const float TowerRange = 11f;
         private const float TowerCooldown = 1f;
         private const int TowerDamageToMinions = 20;
         private const int TowerDamageToPlayers = 12;

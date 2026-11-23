@@ -52,7 +52,7 @@ namespace Jam.Gameplay
             new() { Health = 40, Damage = 6, Range = 4.5f, Cooldown = 1f, Size = new Vector2(0.9f, 0.6f), Paleness = 0.55f },   // Flyer
         };
 
-        private const float SightRange = 9f;
+        public const float SightRange = 9f;
         /// <summary>Targets must be on roughly the same level (no shooting through floors).</summary>
         private const float LevelTolerance = 4f;
         private const float RetargetSeconds = 0.25f;
