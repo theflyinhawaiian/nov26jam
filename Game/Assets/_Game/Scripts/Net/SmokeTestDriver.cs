@@ -151,7 +151,7 @@ namespace Jam.Net
                 Debug.Log($"[Smoke] Match live {Time.time - _matchFoundAt:0.0}s after match found");
             }
 
-            if (_shotDir != null && local != null && local.IsLive && Time.time >= _nextShot)
+            if (_shotDir != null && local != null && local.CountdownStarted && Time.time >= _nextShot)
             {
                 _nextShot = Time.time + _shotEvery;
                 string path = System.IO.Path.Combine(_shotDir, $"hud-{++_shots:00}.png");

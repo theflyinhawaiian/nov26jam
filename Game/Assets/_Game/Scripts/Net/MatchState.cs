@@ -14,7 +14,10 @@ namespace Jam.Net
     {
         public const int NexusMaxHealth = 1500;
         public const int TowerMaxHealth = 800;
-        public const float CountdownSeconds = 3f;
+        /// <summary>Pre-match countdown: long enough to pick a gun.</summary>
+        public const float CountdownSeconds = 10f;
+        /// <summary>Once everyone has picked a gun, the countdown drops to this if it's longer.</summary>
+        public const float ReadyCountdownSeconds = 3f;
         /// <summary>Server leniency for fire requests that arrive just before StartTick (client tick drift).</summary>
         private const uint StartToleranceTicks = 3;
 
@@ -99,6 +102,17 @@ namespace Jam.Net
         {
             if (!CountdownStarted)
                 StartTick.Value = TimeManager.Tick + TimeManager.TimeToTicks(CountdownSeconds);
+        }
+
+        /// <summary>Everyone is ready: cut the countdown to `seconds` left, if more remain.</summary>
+        [Server]
+        public void ShortenCountdown(float seconds)
+        {
+            if (!CountdownStarted)
+                return;
+            uint start = TimeManager.Tick + TimeManager.TimeToTicks(seconds);
+            if (start < StartTick.Value)
+                StartTick.Value = start;
         }
 
         [Server]

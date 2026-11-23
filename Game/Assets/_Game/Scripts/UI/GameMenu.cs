@@ -137,9 +137,12 @@ namespace Jam.UI
 
         private void LateUpdate()
         {
-            if (_shopOpen && !_leaveMenuOpen)
+            if (_status == MatchStatus.InMatch && ModalOpen)
                 _blur.Capture();
         }
+
+        /// <summary>In a match, a menu (leave, gun choice, shop) is over the game: blur it behind the panel.</summary>
+        private bool ModalOpen => _leaveMenuOpen || _shopOpen || NeedsGunChoice(PlayerAvatar.LocalPlayer);
 
         private void FindMatch()
         {
@@ -184,14 +187,16 @@ namespace Jam.UI
                     break;
                 case MatchStatus.InMatch:
                     _hud.Draw(screen, scale, _shopOpen);
+                    // Menus sit on a blurred copy of the game; the countdown stays sharp above it.
+                    if (ModalOpen)
+                        _blur.Draw();
                     DrawCountdown(screen);
                     if (_leaveMenuOpen)
-                        Panel(screen, DrawLeaveMenu);
+                        Panel(screen, DrawLeaveMenu, PanelWidth, _solidPanel);
                     else if (NeedsGunChoice(PlayerAvatar.LocalPlayer))
-                        Panel(screen, DrawGunChoice, ShopWidth, _solidPanel, top: 0.42f);
+                        Panel(screen, DrawGunChoice, ShopWidth, _solidPanel, top: 0.52f);
                     else if (_shopOpen)
                     {
-                        _blur.Draw();
                         Panel(screen, DrawShop, ShopWidth, _solidPanel);
                         DrawTooltip(screen);
                     }
@@ -271,7 +276,7 @@ namespace Jam.UI
                 float remaining = state.CountdownRemaining;
                 if (remaining > 0f)
                 {
-                    big = Mathf.CeilToInt(remaining).ToString();
+                    big = Mathf.CeilToInt(Mathf.Min(remaining, MatchState.CountdownSeconds)).ToString();
                     sub = $"vs {_opponent}";
                 }
                 else if (remaining > -GoBannerSeconds)
@@ -492,7 +497,7 @@ namespace Jam.UI
             if (me == null)
                 return;
             GUILayout.Label("Choose your weapon for this match", _heading);
-            GUILayout.Label("Picked at random if you haven't chosen when the countdown ends.", _small);
+            GUILayout.Label($"Picked at random if you haven't chosen when the countdown ends. Once both players have chosen, the match starts in {MatchState.ReadyCountdownSeconds:0}s.", _small);
             GUILayout.Space(10);
             GUILayout.BeginHorizontal();
             for (int i = 0; i < PlayerWeapons.GunChoices.Length; i++)

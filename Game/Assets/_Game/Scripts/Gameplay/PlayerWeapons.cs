@@ -124,6 +124,15 @@ namespace Jam.Gameplay
                 return;
             Gun.Value = index;
             Debug.Log($"[Weapons] {_avatar.Nickname.Value} chose {_weapons[index].DisplayName}");
+
+            // Everyone has picked: no need to wait out the rest of the countdown.
+            Match match = _avatar.Match;
+            if (match?.State == null || !match.AllPlayersSpawned)
+                return;
+            foreach (PlayerAvatar a in match.Avatars)
+                if (a == null || a.Weapons == null || !a.Weapons.HasGun)
+                    return;
+            match.State.ShortenCountdown(MatchState.ReadyCountdownSeconds);
         }
 
         /// <summary>Server only: pick a gun at random (the countdown ended without a choice).</summary>
