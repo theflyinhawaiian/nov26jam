@@ -316,7 +316,10 @@ namespace Jam.Gameplay
             if (_movement == null || Match == null || !Match.SceneLoaded || Owner == null || !Owner.IsActive)
                 return;
             if (DevMovement)
+            {
+                _movement.AcceptUnchecked(transform.position, Time.unscaledTime);
                 return;
+            }
             var result = _movement.Check(transform.position, (float)TimeManager.TickDelta, Time.unscaledTime, Match.Physics, out Vector2 correction);
             if (result == MovementValidator.Result.Ok)
                 return;

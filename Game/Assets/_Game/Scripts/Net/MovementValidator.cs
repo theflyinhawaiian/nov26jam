@@ -62,6 +62,20 @@ namespace Jam.Net
             _pendingSince = now;
         }
 
+        /// <summary>
+        /// Unchecked movement (dev nickname): accept wherever the owner is. A forced teleport
+        /// still clears once the owner arrives (or after ResendSeconds, since dev movement may
+        /// leave right away), so PendingTeleport doesn't stay stuck at its target; shots
+        /// would keep being moved there.
+        /// </summary>
+        public void AcceptUnchecked(Vector2 pos, float now)
+        {
+            if (_pending && Vector2.Distance(pos, _pendingTarget) > ArriveDistance && now - _pendingSince < ResendSeconds)
+                return;
+            _pending = false;
+            Accept(pos);
+        }
+
         public enum Result { Ok, Violation, Resend }
 
         /// <param name="correction">Where to send the owner on Violation or Resend.</param>
